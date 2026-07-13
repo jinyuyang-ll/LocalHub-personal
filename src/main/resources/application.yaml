@@ -1,0 +1,64 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: hmdp
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8
+    username: root
+    password: 123456
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    lettuce:
+      pool:
+        max-active: 10
+        max-idle: 10
+        min-idle: 1
+        time-between-eviction-runs: 10s
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+  kafka:
+    bootstrap-servers: 127.0.0.1:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: localhub-hmdp
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+mybatis-plus:
+  type-aliases-package: com.hmdp.entity # 别名扫描包
+logging:
+  level:
+    com.hmdp: debug
+  pattern:
+    dateformat: mm:ss.SSS
+    console: "%d{mm:ss.SSS} %-5level [%X{traceId}] %logger{36} - %msg%n"
+localhub:
+  kafka:
+    enabled: false
+    topics:
+      order-events: localhub.order.events
+      seckill-orders: localhub.seckill.orders
+      seckill-orders-retry: localhub.seckill.orders.retry
+      order-events-dlt: localhub.order.events.dlt
+  canal:
+    enabled: false
+    host: 127.0.0.1
+    port: 11111
+    destination: example
+    username:
+    password:
+  seckill:
+    queue: redis-stream
+    retry:
+      max-attempts: 3
+  ai:
+    enabled: false
+    provider: mock
+    model: gpt-4o-mini
+    base-url:
+    api-key:
