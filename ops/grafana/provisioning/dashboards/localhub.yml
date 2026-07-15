@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: LocalHub
+    folder: LocalHub
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

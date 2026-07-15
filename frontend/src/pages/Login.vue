@@ -12,10 +12,12 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { api, unwrap } from '../api'
 
 const phone = ref('')
 const code = ref('')
+const router = useRouter()
 
 async function sendCode() {
   await api.post('/auth/code', null, { params: { phone: phone.value } })
@@ -25,6 +27,6 @@ async function sendCode() {
 async function login() {
   const token = unwrap<string>(await api.post('/auth/login', { phone: phone.value, code: code.value }))
   localStorage.setItem('token', token)
-  alert('登录成功')
+  await router.push('/')
 }
 </script>

@@ -11,8 +11,9 @@ docker compose version
 
 ## 启动完整环境
 
-```bash
-docker compose up --build
+```powershell
+Copy-Item .env.example .env
+.\scripts\start.ps1
 ```
 
 启动后访问：
@@ -27,12 +28,7 @@ docker compose up --build
 
 默认 AI 使用本地 RAG 兜底。如果要调用真实模型：
 
-```bash
-set LOCALHUB_AI_API_KEY=你的Key
-docker compose up --build
-```
-
-并把 `backend.environment.LOCALHUB_AI_ENABLED` 改为 `"true"`。
+在 `.env` 中设置 `LOCALHUB_AI_ENABLED=true`、`LOCALHUB_AI_API_KEY`、模型名和 Base URL，然后重新执行启动命令，不需要修改 Compose 文件。
 
 ## 启用 Canal
 
@@ -42,7 +38,15 @@ Canal 默认不启动。如需启动：
 docker compose --profile canal up --build
 ```
 
-同时把 backend 的 `LOCALHUB_CANAL_ENABLED` 改为 `"true"`。
+同时在 `.env` 设置 `LOCALHUB_CANAL_ENABLED=true`。
+
+## 启用监控
+
+```bash
+docker compose --profile monitoring up --build -d
+```
+
+Prometheus：http://localhost:9090；Grafana：http://localhost:3000。
 
 ## 常用命令
 

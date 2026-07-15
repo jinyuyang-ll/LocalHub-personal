@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.config.LocalHubMetrics;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
@@ -70,6 +71,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private TransactionTemplate transactionTemplate;
     @Resource
     private KafkaTemplate<String, String> kafkaTemplate;
+    @Resource
+    private LocalHubMetrics metrics;
 
     @Value("${localhub.seckill.queue:redis-stream}")
     private String seckillQueue;
@@ -295,12 +298,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         int r = result == null ? -1 : result.intValue();
         // 2.判断结果是否为0
         if (r != 0) {
+            metrics.increment("seckill.accept", r == 1 ? "sold_out" : r == 2 ? "duplicate" : "failed");
             // 2.1.不为0 ，代表没有购买资格
             return Result.fail(r == 1 ? "库存不足" : r == 2 ? "不能重复下单" : "秒杀请求处理失败");
         }
         if (kafkaMode) {
             publishSeckillOrder(orderId, userId, voucherId);
         }
+        metrics.increment("seckill.accept", "success");
         // 3.返回订单id
         return Result.ok(orderId);
     }

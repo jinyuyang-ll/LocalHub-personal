@@ -10,7 +10,7 @@ services:
       - --log-bin=mysql-bin
       - --binlog-format=ROW
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       MYSQL_DATABASE: hmdp
     ports:
       - "3306:3306"
@@ -18,7 +18,7 @@ services:
       - mysql-data:/var/lib/mysql
       - ./src/main/resources/db/hmdp.sql:/docker-entrypoint-initdb.d/01-hmdp.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -38,21 +38,22 @@ services:
       retries: 20
 
   kafka:
-    image: bitnami/kafka:3.7
+    image: apache/kafka:3.7.2
     container_name: localhub-kafka
     ports:
-      - "9092:9092"
+      - "9092:29092"
     environment:
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      ALLOW_PLAINTEXT_LISTENER: yes
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 10s
       retries: 30
@@ -72,17 +73,24 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       LOCALHUB_KAFKA_ENABLED: "true"
       LOCALHUB_SECKILL_QUEUE: kafka
-      LOCALHUB_CANAL_ENABLED: "false"
-      LOCALHUB_AI_ENABLED: "false"
+      LOCALHUB_CANAL_ENABLED: ${LOCALHUB_CANAL_ENABLED:-false}
+      LOCALHUB_AI_ENABLED: ${LOCALHUB_AI_ENABLED:-false}
+      LOCALHUB_AI_MODEL: ${LOCALHUB_AI_MODEL:-qwen-plus}
+      LOCALHUB_AI_BASE_URL: ${LOCALHUB_AI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       LOCALHUB_AI_API_KEY: ${LOCALHUB_AI_API_KEY:-}
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   frontend:
     build:
@@ -107,9 +115,32 @@ services:
     environment:
       canal.instance.master.address: mysql:3306
       canal.instance.dbUsername: root
-      canal.instance.dbPassword: 123456
+      canal.instance.dbPassword: ${MYSQL_ROOT_PASSWORD:-123456}
       canal.instance.connectionCharset: UTF-8
       canal.instance.filter.regex: hmdp\\.tb_shop
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: localhub-prometheus
+    profiles: ["monitoring"]
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: localhub-grafana
+    profiles: ["monitoring"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
 
 volumes:
   mysql-data:

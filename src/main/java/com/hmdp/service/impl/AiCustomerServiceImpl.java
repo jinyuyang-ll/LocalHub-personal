@@ -2,10 +2,14 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.service.IAiCustomerService;
+import com.hmdp.config.LocalHubMetrics;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,9 +23,25 @@ public class AiCustomerServiceImpl implements IAiCustomerService {
 
     @Resource
     private LangChain4jChatClient langChain4jChatClient;
+    @Resource
+    private AiBusinessTools aiBusinessTools;
+    @Resource
+    private LocalHubMetrics metrics;
+
+    private static final Pattern ORDER_ID = Pattern.compile("(?:订单|order)\\s*[号#:]?\\s*(\\d{6,})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SHOP_ID = Pattern.compile("(?:店铺|shop)\\s*[号#:]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     @Override
     public String chat(String message) {
+        long started = System.nanoTime();
+        try {
+            return doChat(message);
+        } finally {
+            metrics.record("ai.chat", started);
+        }
+    }
+
+    private String doChat(String message) {
         if (StrUtil.isBlank(message)) {
             return "请告诉我你想查询店铺、优惠券、订单还是预约。";
         }
@@ -47,10 +67,47 @@ public class AiCustomerServiceImpl implements IAiCustomerService {
         return "我是 LocalHub 客服助手，可以帮你处理店铺、优惠券、秒杀订单和预约问题。";
     }
 
+    @Override
+    public void stream(String message, Consumer<String> onToken, Runnable onComplete, Consumer<Throwable> onError) {
+        long started = System.nanoTime();
+        try {
+            String toolResponse = tryToolGuardedAnswer(message);
+            List<RagSearchService.RagDocument> references = ragSearchService.search(message, 3);
+            String context = references.stream()
+                    .map(document -> "【" + document.getTitle() + "】\n" + document.getContent())
+                    .collect(Collectors.joining("\n\n"));
+            String prompt = buildPrompt(message, context, toolResponse);
+            boolean startedStreaming = langChain4jChatClient.stream(prompt, onToken, () -> {
+                onToken.accept(buildReferenceText(references));
+                metrics.record("ai.chat", started);
+                onComplete.run();
+            }, onError);
+            if (startedStreaming) return;
+            String fallback = StrUtil.isNotBlank(toolResponse) ? toolResponse + buildReferenceText(references)
+                    : !references.isEmpty() ? "我根据知识库找到这些信息：\n\n" + context + buildReferenceText(references)
+                    : "我是 LocalHub 客服助手，可以帮你处理店铺、优惠券、秒杀订单和预约问题。";
+            for (int start = 0; start < fallback.length(); start += 24) {
+                onToken.accept(fallback.substring(start, Math.min(fallback.length(), start + 24)));
+            }
+            metrics.record("ai.chat", started);
+            onComplete.run();
+        } catch (Throwable e) {
+            onError.accept(e);
+        }
+    }
+
     private String tryToolGuardedAnswer(String message) {
         String lower = message.toLowerCase();
         if (containsAny(lower, "订单", "order")) {
-            return guarded("queryOrderStatus", "你可以在“我的订单”中查看状态，也可以提供订单号让我帮你查询。");
+            Matcher matcher = ORDER_ID.matcher(message);
+            if (matcher.find()) {
+                try {
+                    return aiBusinessTools.queryOrderStatus(Long.valueOf(matcher.group(1)));
+                } catch (RuntimeException e) {
+                    return e.getMessage();
+                }
+            }
+            return guarded("queryOrderStatus", "请提供订单号，例如：查询订单 123456789。查询只会返回当前登录用户的订单。 ");
         }
         if (containsAny(lower, "预约", "reservation")) {
             return guarded("createReservation", "你可以选择店铺和时间创建预约；如果要取消，请提供预约编号。");
@@ -59,6 +116,11 @@ public class AiCustomerServiceImpl implements IAiCustomerService {
             return guarded("queryVoucher", "普通券可在店铺详情页领取；秒杀券需要在活动时间内抢购。");
         }
         if (containsAny(lower, "店铺", "shop")) {
+            Matcher matcher = SHOP_ID.matcher(message);
+            if (matcher.find()) {
+                metrics.increment("ai.tool", "query_shop");
+                return aiBusinessTools.queryShop(Long.valueOf(matcher.group(1)));
+            }
             return guarded("queryShop", "你可以按名称搜索店铺，也可以开启定位查看附近店铺。");
         }
         return null;

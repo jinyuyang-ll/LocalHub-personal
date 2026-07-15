@@ -62,3 +62,14 @@ localhub:
     model: gpt-4o-mini
     base-url:
     api-key:
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}

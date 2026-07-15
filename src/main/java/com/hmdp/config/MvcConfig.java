@@ -30,7 +30,10 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/api/auth/code",
                         "/api/auth/login",
                         "/api/shops/**",
-                        "/api/ai/**"
+                        "/api/ai/**",
+                        "/actuator/health",
+                        "/actuator/info",
+                        "/actuator/prometheus"
                 ).order(1);
         // token刷新的拦截器
         registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).addPathPatterns("/**").order(0);

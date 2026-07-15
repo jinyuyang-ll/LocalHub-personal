@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import com.hmdp.entity.OutboxEvent;
+import com.hmdp.config.LocalHubMetrics;
 import com.hmdp.service.IOutboxEventService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,6 +22,8 @@ public class KafkaOutboxDispatcher {
 
     @Resource
     private KafkaTemplate<String, String> kafkaTemplate;
+    @Resource
+    private LocalHubMetrics metrics;
 
     @Scheduled(fixedDelay = 5_000)
     public void dispatch() {
@@ -33,10 +36,12 @@ public class KafkaOutboxDispatcher {
                         event.getPayload()
                 ).get();
                 outboxEventService.markSent(event.getId());
+                metrics.increment("outbox.dispatch", "success");
                 log.info("Outbox event dispatched. id={}, topic={}, type={}",
                         event.getId(), event.getTopic(), event.getEventType());
             } catch (Exception e) {
                 outboxEventService.markFailed(event.getId(), e.getMessage());
+                metrics.increment("outbox.dispatch", "failed");
                 log.warn("Outbox event dispatch failed. id={}, topic={}", event.getId(), event.getTopic(), e);
             }
         }

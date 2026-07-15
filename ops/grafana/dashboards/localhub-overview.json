@@ -1,0 +1,16 @@
+{
+  "title": "LocalHub Overview",
+  "uid": "localhub-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    { "type": "timeseries", "title": "HTTP requests / sec", "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 }, "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count{application=\"hmdp\"}[1m]))", "legendFormat": "requests/s" }] },
+    { "type": "timeseries", "title": "HTTP P95", "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"hmdp\"}[5m])) by (le))", "legendFormat": "p95" }] },
+    { "type": "timeseries", "title": "JVM heap", "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 }, "targets": [{ "expr": "sum(jvm_memory_used_bytes{application=\"hmdp\",area=\"heap\"})", "legendFormat": "used" }] },
+    { "type": "timeseries", "title": "Seckill acceptance", "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum by (result) (rate(localhub_seckill_accept_total[1m]))", "legendFormat": "{{result}}" }] },
+    { "type": "timeseries", "title": "Kafka retry / DLT", "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum(rate(localhub_kafka_retry_total[1m]))", "legendFormat": "retry" }, { "expr": "sum(rate(localhub_kafka_dlt_total[1m]))", "legendFormat": "dlt" }] },
+    { "type": "timeseries", "title": "AI latency P95", "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(localhub_ai_chat_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }] }
+  ]
+}

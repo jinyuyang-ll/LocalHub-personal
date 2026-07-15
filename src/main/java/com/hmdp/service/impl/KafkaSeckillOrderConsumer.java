@@ -3,6 +3,7 @@ package com.hmdp.service.impl;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.config.LocalHubMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,6 +23,8 @@ public class KafkaSeckillOrderConsumer {
 
     @Resource
     private KafkaTemplate<String, String> kafkaTemplate;
+    @Resource
+    private LocalHubMetrics metrics;
 
     @Value("${localhub.kafka.topics.order-events-dlt:localhub.order.events.dlt}")
     private String dltTopic;
@@ -58,7 +61,9 @@ public class KafkaSeckillOrderConsumer {
             voucherOrder.setUserId(message.getUserId());
             voucherOrder.setVoucherId(message.getVoucherId());
             voucherOrderService.createVoucherOrder(voucherOrder);
+            metrics.increment("seckill.consumer", "success");
         } catch (Exception e) {
+            metrics.increment("seckill.consumer", "failed");
             log.error("Kafka seckill order consume failed. payload={}", payload, e);
             publishFailure(message, e);
             throw new IllegalStateException(e);
@@ -76,8 +81,10 @@ public class KafkaSeckillOrderConsumer {
         String payload = JSONUtil.toJsonStr(message);
         String key = String.valueOf(message.getOrderId());
         if (retryCount < maxAttempts) {
+            metrics.increment("kafka.retry", "published");
             kafkaTemplate.send(retryTopic, key, payload);
         } else {
+            metrics.increment("kafka.dlt", "published");
             kafkaTemplate.send(dltTopic, key, payload);
         }
     }

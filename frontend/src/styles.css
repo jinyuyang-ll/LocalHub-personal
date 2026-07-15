@@ -61,6 +61,23 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.secondary { background: #64748b; }
+.success { color: #15803d; }
+.chat-history { display: grid; gap: 10px; margin: 12px 0; }
+.bubble { max-width: 78%; padding: 10px 14px; border-radius: 14px; }
+.bubble p { margin: 4px 0 0; white-space: pre-wrap; }
+.bubble.user { justify-self: end; background: #dbeafe; }
+.bubble.assistant { justify-self: start; background: #f1f5f9; }
+
+.error {
+  color: #b91c1c;
+}
+
 .row,
 .search {
   display: flex;

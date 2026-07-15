@@ -5,6 +5,8 @@
       <input v-model="keyword" placeholder="搜索店铺名称" />
       <button @click="loadShops">搜索</button>
     </div>
+    <p v-if="loading">正在加载…</p>
+    <p v-if="error" class="error">{{ error }}</p>
     <article v-for="shop in shops" :key="shop.id" class="card">
       <h3>{{ shop.name }}</h3>
       <p>{{ shop.address }}</p>
@@ -24,14 +26,26 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { api, unwrap } from '../api'
 
 const keyword = ref('')
 const shops = ref<any[]>([])
 const vouchers = ref<any[]>([])
+const loading = ref(false)
+const error = ref('')
+const router = useRouter()
 
 async function loadShops() {
-  shops.value = unwrap(await api.get('/shops/search', { params: { name: keyword.value } })) as any[]
+  loading.value = true
+  error.value = ''
+  try {
+    shops.value = unwrap(await api.get('/shops/search', { params: { name: keyword.value } })) as any[]
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '商家加载失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function loadVouchers(shopId: number) {
@@ -45,7 +59,7 @@ async function receive(voucherId: number) {
 
 async function seckill(voucherId: number) {
   const orderId = unwrap(await api.post(`/seckill-vouchers/${voucherId}/orders`))
-  alert(`秒杀请求已提交，订单号：${orderId}`)
+  await router.push({ path: '/orders', query: { orderId: String(orderId), poll: '1' } })
 }
 
 loadShops()
