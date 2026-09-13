@@ -3,6 +3,7 @@ package com.hmdp;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @SpringBootTest
+@Disabled("Manual lock demonstration; Docker-backed integration tests verify Redisson configuration")
 class RedissonTest {
 
     @Resource

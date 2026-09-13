@@ -41,4 +41,12 @@ public class KafkaTopicConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic seckillOrdersDltTopic() {
+        return TopicBuilder.name("localhub.seckill.orders.dlt")
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
 }

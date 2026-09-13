@@ -5,15 +5,10 @@ import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.service.IOutboxEventService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.concurrent.TimeUnit;
-
-import static com.hmdp.utils.RedisConstants.SECKILL_ORDER_STATUS_KEY;
-import static com.hmdp.utils.RedisConstants.SECKILL_ORDER_STATUS_TTL;
 
 @Slf4j
 @Component
@@ -21,13 +16,13 @@ import static com.hmdp.utils.RedisConstants.SECKILL_ORDER_STATUS_TTL;
 public class KafkaDeadLetterConsumer {
 
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private SeckillKafkaRecoveryService recoveryService;
 
     @Resource
     private IOutboxEventService outboxEventService;
 
     @KafkaListener(
-            topics = "${localhub.kafka.topics.order-events-dlt:localhub.order.events.dlt}",
+            topics = "${localhub.kafka.topics.seckill-orders-dlt:localhub.seckill.orders.dlt}",
             groupId = "${spring.kafka.consumer.group-id:localhub-hmdp}-dlt",
             autoStartup = "${localhub.kafka.enabled:false}"
     )
@@ -40,12 +35,7 @@ public class KafkaDeadLetterConsumer {
         }
 
         if (message != null && message.getOrderId() != null) {
-            stringRedisTemplate.opsForValue().set(
-                    SECKILL_ORDER_STATUS_KEY + message.getOrderId(),
-                    "FAILED",
-                    SECKILL_ORDER_STATUS_TTL,
-                    TimeUnit.MINUTES
-            );
+            recoveryService.compensate(message, "dead letter consumed");
             outboxEventService.createEvent(
                     "VoucherOrder",
                     message.getOrderId(),

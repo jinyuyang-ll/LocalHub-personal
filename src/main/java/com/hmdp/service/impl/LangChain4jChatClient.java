@@ -1,92 +1,87 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.service.AiServices;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.util.function.Consumer;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
 public class LangChain4jChatClient {
 
-    @Value("${localhub.ai.enabled:false}")
-    private Boolean enabled;
+    @Value("${localhub.ai.enabled:false}") private boolean enabled;
+    @Value("${localhub.ai.api-key:}") private String apiKey;
+    @Value("${localhub.ai.model:qwen-plus}") private String modelName;
+    @Value("${localhub.ai.base-url:}") private String baseUrl;
+    @Value("${localhub.ai.timeout-seconds:25}") private int timeoutSeconds;
 
-    @Value("${localhub.ai.api-key:}")
-    private String apiKey;
-
-    @Value("${localhub.ai.model:gpt-4o-mini}")
-    private String model;
-
-    @Value("${localhub.ai.base-url:}")
-    private String baseUrl;
+    private final AtomicInteger consecutiveFailures = new AtomicInteger();
+    private volatile long circuitOpenUntil;
+    private volatile ChatLanguageModel model;
 
     public boolean available() {
-        return Boolean.TRUE.equals(enabled) && StrUtil.isNotBlank(apiKey);
+        return enabled && StrUtil.isNotBlank(apiKey) && StrUtil.isNotBlank(baseUrl);
     }
 
     public String chat(String prompt) {
-        if (!available()) {
-            return null;
-        }
+        if (!canCall()) return null;
         try {
-            Class<?> modelClass = Class.forName("dev.langchain4j.model.openai.OpenAiChatModel");
-            Object builder = modelClass.getMethod("builder").invoke(null);
-            invokeIfExists(builder, "apiKey", apiKey);
-            invokeIfExists(builder, "modelName", model);
-            invokeIfExists(builder, "temperature", 0.2);
-            if (StrUtil.isNotBlank(baseUrl)) {
-                invokeIfExists(builder, "baseUrl", baseUrl);
-            }
-            Object chatModel = builder.getClass().getMethod("build").invoke(builder);
-            Method generate = chatModel.getClass().getMethod("generate", String.class);
-            return String.valueOf(generate.invoke(chatModel, prompt));
-        } catch (Exception e) {
-            log.warn("LangChain4j chat failed, fallback to local RAG. {}", e.getMessage());
+            String response = model().generate(prompt);
+            consecutiveFailures.set(0);
+            return response;
+        } catch (RuntimeException e) {
+            recordFailure(e);
             return null;
         }
     }
 
-    public boolean stream(String prompt, Consumer<String> onToken, Runnable onComplete, Consumer<Throwable> onError) {
-        if (!available()) return false;
+    public String chatWithTools(String prompt, Object tools) {
+        if (!canCall()) return null;
         try {
-            Class<?> modelClass = Class.forName("dev.langchain4j.model.openai.OpenAiStreamingChatModel");
-            Object builder = modelClass.getMethod("builder").invoke(null);
-            invokeIfExists(builder, "apiKey", apiKey);
-            invokeIfExists(builder, "modelName", model);
-            invokeIfExists(builder, "temperature", 0.2);
-            if (StrUtil.isNotBlank(baseUrl)) invokeIfExists(builder, "baseUrl", baseUrl);
-            Object streamingModel = builder.getClass().getMethod("build").invoke(builder);
-            Class<?> handlerType = Class.forName("dev.langchain4j.model.StreamingResponseHandler");
-            Object handler = Proxy.newProxyInstance(handlerType.getClassLoader(), new Class<?>[]{handlerType}, (proxy, method, args) -> {
-                if ("onNext".equals(method.getName()) && args != null && args.length > 0) onToken.accept(String.valueOf(args[0]));
-                else if ("onComplete".equals(method.getName())) onComplete.run();
-                else if ("onError".equals(method.getName()) && args != null && args.length > 0) onError.accept((Throwable) args[0]);
-                return null;
-            });
-            Method generate = streamingModel.getClass().getMethod("generate", String.class, handlerType);
-            generate.invoke(streamingModel, prompt, handler);
-            return true;
-        } catch (Exception e) {
-            log.warn("Native model streaming unavailable, using local streaming fallback. {}", e.getMessage());
-            return false;
+            NativeAiAssistant assistant = AiServices.builder(NativeAiAssistant.class)
+                    .chatLanguageModel(model())
+                    .tools(tools)
+                    .build();
+            String response = assistant.answer(prompt);
+            consecutiveFailures.set(0);
+            return response;
+        } catch (RuntimeException e) {
+            recordFailure(e);
+            return null;
         }
     }
 
-    private void invokeIfExists(Object target, String methodName, Object value) {
-        for (Method method : target.getClass().getMethods()) {
-            if (method.getName().equals(methodName) && method.getParameterTypes().length == 1) {
-                try {
-                    method.invoke(target, value);
-                } catch (Exception ignored) {
-                    // keep compatibility with different LangChain4j versions
+    private boolean canCall() {
+        return available() && System.currentTimeMillis() >= circuitOpenUntil;
+    }
+
+    private ChatLanguageModel model() {
+        if (model == null) {
+            synchronized (this) {
+                if (model == null) {
+                    model = OpenAiChatModel.builder()
+                            .apiKey(apiKey)
+                            .baseUrl(baseUrl)
+                            .modelName(modelName)
+                            .temperature(0.2)
+                            .timeout(Duration.ofSeconds(timeoutSeconds))
+                            .maxRetries(2)
+                            .build();
                 }
-                return;
             }
         }
+        return model;
+    }
+
+    private void recordFailure(RuntimeException error) {
+        int failures = consecutiveFailures.incrementAndGet();
+        if (failures >= 3) circuitOpenUntil = System.currentTimeMillis() + 30_000L;
+        log.warn("Alibaba Bailian model call failed, failures={}: {}", failures, error.getMessage());
     }
 }

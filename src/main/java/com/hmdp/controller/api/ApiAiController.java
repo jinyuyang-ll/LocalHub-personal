@@ -25,14 +25,14 @@ public class ApiAiController {
     @PostMapping("/chat")
     @RateLimit(key = "api:ai:chat", limit = 20, windowSeconds = 60, type = RateLimitType.IP)
     public Result chat(@RequestBody AiChatRequest request) {
-        return Result.ok(aiCustomerService.chat(request.getMessage()));
+        return Result.ok(aiCustomerService.chat(request.getMessage(), request.getConversationId()));
     }
 
     @GetMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RateLimit(key = "api:ai:chat:stream", limit = 20, windowSeconds = 60, type = RateLimitType.IP)
-    public SseEmitter stream(@RequestParam("message") String message) {
+    public SseEmitter stream(@RequestParam("message") String message, @RequestParam(value = "conversationId", required = false) String conversationId) {
         SseEmitter emitter = new SseEmitter(60_000L);
-        aiCustomerService.stream(message, chunk -> send(emitter, "message", chunk), () -> {
+        aiCustomerService.stream(message, conversationId, chunk -> send(emitter, "message", chunk), () -> {
             send(emitter, "done", "[DONE]");
             emitter.complete();
         }, emitter::completeWithError);

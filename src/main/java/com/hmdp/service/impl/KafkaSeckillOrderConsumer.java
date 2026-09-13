@@ -25,8 +25,10 @@ public class KafkaSeckillOrderConsumer {
     private KafkaTemplate<String, String> kafkaTemplate;
     @Resource
     private LocalHubMetrics metrics;
+    @Resource
+    private SeckillKafkaRecoveryService recoveryService;
 
-    @Value("${localhub.kafka.topics.order-events-dlt:localhub.order.events.dlt}")
+    @Value("${localhub.kafka.topics.seckill-orders-dlt:localhub.seckill.orders.dlt}")
     private String dltTopic;
 
     @Value("${localhub.kafka.topics.seckill-orders-retry:localhub.seckill.orders.retry}")
@@ -54,8 +56,10 @@ public class KafkaSeckillOrderConsumer {
     }
 
     private void handle(String payload) {
-        SeckillOrderMessage message = JSONUtil.toBean(payload, SeckillOrderMessage.class);
+        SeckillOrderMessage message;
         try {
+            message = JSONUtil.toBean(payload, SeckillOrderMessage.class);
+            validate(message);
             VoucherOrder voucherOrder = new VoucherOrder();
             voucherOrder.setId(message.getOrderId());
             voucherOrder.setUserId(message.getUserId());
@@ -65,14 +69,15 @@ public class KafkaSeckillOrderConsumer {
         } catch (Exception e) {
             metrics.increment("seckill.consumer", "failed");
             log.error("Kafka seckill order consume failed. payload={}", payload, e);
-            publishFailure(message, e);
-            throw new IllegalStateException(e);
+            message = safeParse(payload);
+            publishFailure(message, payload, e);
         }
     }
 
-    private void publishFailure(SeckillOrderMessage message, Exception e) {
+    private void publishFailure(SeckillOrderMessage message, String originalPayload, Exception e) {
         if (message == null) {
-            kafkaTemplate.send(dltTopic, null, "");
+            awaitSend(dltTopic, null, originalPayload);
+            metrics.increment("kafka.dlt", "invalid_payload");
             return;
         }
         int retryCount = message.getRetryCount() == null ? 1 : message.getRetryCount() + 1;
@@ -81,11 +86,34 @@ public class KafkaSeckillOrderConsumer {
         String payload = JSONUtil.toJsonStr(message);
         String key = String.valueOf(message.getOrderId());
         if (retryCount < maxAttempts) {
+            awaitSend(retryTopic, key, payload);
             metrics.increment("kafka.retry", "published");
-            kafkaTemplate.send(retryTopic, key, payload);
         } else {
+            awaitSend(dltTopic, key, payload);
+            recoveryService.compensate(message, "consumer retries exhausted");
             metrics.increment("kafka.dlt", "published");
-            kafkaTemplate.send(dltTopic, key, payload);
+        }
+    }
+
+    private void awaitSend(String topic, String key, String payload) {
+        try {
+            kafkaTemplate.send(topic, key, payload).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception sendError) {
+            throw new IllegalStateException("Failed to publish Kafka recovery message", sendError);
+        }
+    }
+
+    private SeckillOrderMessage safeParse(String payload) {
+        try {
+            return JSONUtil.toBean(payload, SeckillOrderMessage.class);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void validate(SeckillOrderMessage message) {
+        if (message == null || message.getOrderId() == null || message.getUserId() == null || message.getVoucherId() == null) {
+            throw new IllegalArgumentException("Invalid seckill order message");
         }
     }
 

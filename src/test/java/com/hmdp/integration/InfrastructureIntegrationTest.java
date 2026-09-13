@@ -95,4 +95,48 @@ class InfrastructureIntegrationTest {
             assertTrue(found, "Kafka message was not consumed before timeout");
         }
     }
+
+    @Test
+    void seckillCompensationIsAtomicAndIdempotent() {
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(
+                new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)));
+        factory.afterPropertiesSet();
+        StringRedisTemplate redis = new StringRedisTemplate(factory);
+        redis.afterPropertiesSet();
+        redis.opsForValue().set("seckill:stock:88", "0");
+        redis.opsForSet().add("seckill:order:88", "7");
+        redis.opsForValue().set("seckill:reservation:1001", "88:7");
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("seckill_compensate.lua"));
+        script.setResultType(Long.class);
+
+        assertEquals(1L, redis.execute(script, Collections.emptyList(), "88", "7", "1001", "1800", "FAILED", "0"));
+        assertEquals("1", redis.opsForValue().get("seckill:stock:88"));
+        assertEquals(false, redis.opsForSet().isMember("seckill:order:88", "7"));
+        assertEquals("FAILED", redis.opsForValue().get("seckill:order:status:1001"));
+        assertEquals(0L, redis.execute(script, Collections.emptyList(), "88", "7", "1001", "1800", "FAILED", "0"));
+        assertEquals("1", redis.opsForValue().get("seckill:stock:88"));
+        factory.destroy();
+    }
+
+    @Test
+    void duplicateCompensationKeepsUserMarker() {
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(
+                new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)));
+        factory.afterPropertiesSet();
+        StringRedisTemplate redis = new StringRedisTemplate(factory);
+        redis.afterPropertiesSet();
+        redis.opsForValue().set("seckill:stock:89", "0");
+        redis.opsForSet().add("seckill:order:89", "7");
+        redis.opsForValue().set("seckill:reservation:1002", "89:7");
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("seckill_compensate.lua"));
+        script.setResultType(Long.class);
+
+        assertEquals(1L, redis.execute(script, Collections.emptyList(), "89", "7", "1002", "1800", "DUPLICATE", "1"));
+        assertEquals("1", redis.opsForValue().get("seckill:stock:89"));
+        assertEquals(true, redis.opsForSet().isMember("seckill:order:89", "7"));
+        assertEquals("DUPLICATE", redis.opsForValue().get("seckill:order:status:1002"));
+        factory.destroy();
+    }
 }

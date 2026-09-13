@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.concurrent.TimeUnit;
+import java.util.List;
 
 @Configuration
 public class CaffeineConfig {
@@ -16,6 +17,14 @@ public class CaffeineConfig {
         return Caffeine.newBuilder()
                 .maximumSize(10_000)
                 .expireAfterWrite(5, TimeUnit.MINUTES)
+                .build();
+    }
+
+    @Bean("shopSearchLocalCache")
+    public Cache<String, List<Shop>> shopSearchLocalCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(2_000)
+                .expireAfterWrite(2, TimeUnit.MINUTES)
                 .build();
     }
 }

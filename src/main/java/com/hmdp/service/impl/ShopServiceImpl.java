@@ -11,6 +11,8 @@ import com.hmdp.service.IShopService;
 import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisBloomFilter;
 import com.hmdp.utils.SystemConstants;
+import com.hmdp.config.LocalHubMetrics;
+import cn.hutool.json.JSONUtil;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
@@ -47,6 +49,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private Cache<Long, Shop> shopLocalCache;
 
+    @Resource(name = "shopSearchLocalCache")
+    private Cache<String, List<Shop>> shopSearchLocalCache;
+
+    @Resource
+    private LocalHubMetrics metrics;
+
     @Resource
     private RedisBloomFilter redisBloomFilter;
 
@@ -64,14 +72,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 解决缓存穿透
         Shop shop = cacheClient
                 .queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
-
-        // 互斥锁解决缓存击穿
-        // Shop shop = cacheClient
-        //         .queryWithMutex(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
-
-        // 逻辑过期解决缓存击穿
-        // Shop shop = cacheClient
-        //         .queryWithLogicalExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 20L, TimeUnit.SECONDS);
 
         if (shop == null) {
             return Result.fail("店铺不存在！");
@@ -93,8 +93,44 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 2.删除缓存
         stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
         shopLocalCache.invalidate(id);
+        shopSearchLocalCache.invalidateAll();
+        stringRedisTemplate.opsForValue().increment(CACHE_SHOP_SEARCH_VERSION_KEY);
         redisBloomFilter.put(SHOP_BLOOM_KEY, id, SHOP_BLOOM_SIZE);
         return Result.ok();
+    }
+
+    @Override
+    public Result searchShops(String name, Integer current) {
+        int pageNumber = current == null || current < 1 ? 1 : current;
+        String normalizedName = StrUtil.blankToDefault(name, "").trim().toLowerCase(Locale.ROOT);
+        String version = StrUtil.blankToDefault(stringRedisTemplate.opsForValue().get(CACHE_SHOP_SEARCH_VERSION_KEY), "0");
+        String queryToken = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(normalizedName.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String cacheKey = version + ":" + pageNumber + ":" + queryToken;
+
+        List<Shop> local = shopSearchLocalCache.getIfPresent(cacheKey);
+        if (local != null) {
+            metrics.increment("cache.shop.search", "caffeine_hit");
+            return Result.ok(local);
+        }
+
+        String redisKey = CACHE_SHOP_SEARCH_KEY + cacheKey;
+        String cached = stringRedisTemplate.opsForValue().get(redisKey);
+        if (StrUtil.isNotBlank(cached)) {
+            List<Shop> shops = JSONUtil.toList(JSONUtil.parseArray(cached), Shop.class);
+            shopSearchLocalCache.put(cacheKey, shops);
+            metrics.increment("cache.shop.search", "redis_hit");
+            return Result.ok(shops);
+        }
+
+        List<Shop> shops = query()
+                .like(StrUtil.isNotBlank(normalizedName), "name", normalizedName)
+                .page(new Page<>(pageNumber, SystemConstants.MAX_PAGE_SIZE))
+                .getRecords();
+        stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shops), 10, TimeUnit.MINUTES);
+        shopSearchLocalCache.put(cacheKey, shops);
+        metrics.increment("cache.shop.search", "db_fallback");
+        return Result.ok(shops);
     }
 
     @Override

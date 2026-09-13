@@ -11,12 +11,32 @@ public class AiToolGuard {
 
     private final Set<String> allowedTools = new HashSet<>(Arrays.asList(
             "queryShop",
-            "queryVoucher",
+            "queryVouchersByShop",
             "queryOrderStatus",
-            "createReservation"
+            "createReservationPreview",
+            "confirmReservation",
+            "cancelReservationPreview"
     ));
 
     public boolean isAllowed(String toolName) {
         return allowedTools.contains(toolName);
+    }
+
+    private static final ThreadLocal<String> USER_TURN = new ThreadLocal<>();
+
+    public void beginUserTurn(String message) {
+        USER_TURN.set(message == null ? "" : message);
+    }
+
+    public void endUserTurn() {
+        USER_TURN.remove();
+    }
+
+    public void requireExplicitConfirmation() {
+        String message = USER_TURN.get();
+        String normalized = message == null ? "" : message.toLowerCase();
+        if (!normalized.contains("确认") && !normalized.contains("confirm")) {
+            throw new IllegalStateException("必须由用户明确确认后才能创建预约");
+        }
     }
 }

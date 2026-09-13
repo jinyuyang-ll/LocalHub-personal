@@ -44,6 +44,7 @@ localhub:
       order-events: localhub.order.events
       seckill-orders: localhub.seckill.orders
       seckill-orders-retry: localhub.seckill.orders.retry
+      seckill-orders-dlt: localhub.seckill.orders.dlt
       order-events-dlt: localhub.order.events.dlt
   canal:
     enabled: false
@@ -56,12 +57,25 @@ localhub:
     queue: redis-stream
     retry:
       max-attempts: 3
+    publish-retry:
+      max-attempts: 5
+      interval-ms: 5000
   ai:
     enabled: false
-    provider: mock
-    model: gpt-4o-mini
-    base-url:
+    provider: dashscope
+    model: qwen-plus
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:
+    timeout-seconds: 25
+    session-ttl-seconds: 1800
+    embedding:
+      model: text-embedding-v3
+      base-url: ${localhub.ai.base-url}
+      dimensions: 1024
+    retrieval:
+      min-score: 0.25
+      candidate-limit: 12
+      vector-weight: 0.65
 management:
   endpoints:
     web:

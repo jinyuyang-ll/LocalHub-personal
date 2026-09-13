@@ -15,6 +15,8 @@ public class RedisConstants {
 
     public static final Long CACHE_SHOP_TTL = 30L;
     public static final String CACHE_SHOP_KEY = "cache:shop:";
+    public static final String CACHE_SHOP_SEARCH_KEY = "cache:shop:search:";
+    public static final String CACHE_SHOP_SEARCH_VERSION_KEY = "cache:shop:search:version";
     public static final String SHOP_BLOOM_KEY = "bloom:shop";
     public static final Long SHOP_BLOOM_SIZE = 1_000_000L;
 
@@ -23,6 +25,9 @@ public class RedisConstants {
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     public static final String SECKILL_ORDER_STATUS_KEY = "seckill:order:status:";
+    public static final String SECKILL_RESERVATION_KEY = "seckill:reservation:";
+    public static final String SECKILL_PUBLISH_PAYLOAD_HASH = "seckill:kafka:publish:payload";
+    public static final String SECKILL_PUBLISH_RETRY_ZSET = "seckill:kafka:publish:retry";
     public static final Long SECKILL_ORDER_STATUS_TTL = 30L;
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";

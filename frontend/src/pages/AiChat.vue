@@ -46,6 +46,15 @@ const remark = ref('')
 const previewData = ref<Preview>()
 const reservationResult = ref('')
 let controller: AbortController | undefined
+const conversationId = getConversationId()
+
+function getConversationId() {
+  const existing = sessionStorage.getItem('localhub-ai-conversation')
+  if (existing) return existing
+  const created = crypto.randomUUID()
+  sessionStorage.setItem('localhub-ai-conversation', created)
+  return created
+}
 
 async function send() {
   const question = message.value.trim()
@@ -54,7 +63,7 @@ async function send() {
   const answer = history.value[history.value.length - 1]
   message.value = ''; error.value = ''; streaming.value = true; controller = new AbortController()
   try {
-    await streamSse(`/ai/chat/stream?message=${encodeURIComponent(question)}`, chunk => answer.content += chunk, controller.signal)
+    await streamSse(`/ai/chat/stream?message=${encodeURIComponent(question)}&conversationId=${encodeURIComponent(conversationId)}`, chunk => answer.content += chunk, controller.signal)
   } catch (e) {
     if (!(e instanceof DOMException && e.name === 'AbortError')) error.value = e instanceof Error ? e.message : '请求失败'
   } finally {
