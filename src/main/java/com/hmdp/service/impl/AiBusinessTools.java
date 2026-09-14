@@ -7,6 +7,8 @@ import com.hmdp.config.LocalHubMetrics;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Reservation;
 import com.hmdp.entity.Shop;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
 import com.hmdp.service.IReservationService;
 import com.hmdp.service.IShopService;
 import com.hmdp.service.IVoucherOrderService;
@@ -22,13 +24,11 @@ import java.util.UUID;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
+import static com.hmdp.utils.RedisConstants.*;
+
 @Component
 public class AiBusinessTools {
 
-    private static final String CONFIRM_KEY = "ai:reservation:confirm:";
-    private static final String RESULT_KEY = "ai:reservation:result:";
-    private static final String LOCK_KEY = "ai:reservation:lock:";
-    private static final String STATE_KEY = "ai:reservation:state:";
     private static final String STATE_PREVIEWED = "PREVIEWED";
     private static final String STATE_CONFIRMING = "CONFIRMING";
     private static final String STATE_CONFIRMED = "CONFIRMED";
@@ -48,7 +48,7 @@ public class AiBusinessTools {
 
     public String queryShop(Long shopId) {
         requireAllowed("queryShop");
-        if (shopId == null || shopId <= 0) throw new IllegalArgumentException("店铺编号必须为正整数");
+        if (shopId == null || shopId <= 0) throw new BusinessException(ErrorCode.INVALID_PARAMETER, "店铺编号必须为正整数");
         Result result = shopService.queryById(shopId);
         return result.getSuccess() ? JSONUtil.toJsonStr(result.getData()) : result.getErrorMsg();
     }
@@ -56,7 +56,7 @@ public class AiBusinessTools {
     public String queryOrderStatus(Long orderId) {
         requireAllowed("queryOrderStatus");
         requireLogin();
-        if (orderId == null || orderId <= 0) throw new IllegalArgumentException("订单编号必须为正整数");
+        if (orderId == null || orderId <= 0) throw new BusinessException(ErrorCode.INVALID_PARAMETER, "订单编号必须为正整数");
         Result result = voucherOrderService.queryOrderStatus(orderId);
         metrics.increment("ai.tool", "query_order");
         return result.getSuccess() ? "订单 " + orderId + " 当前状态：" + result.getData() : result.getErrorMsg();
@@ -64,7 +64,7 @@ public class AiBusinessTools {
 
     public String queryVouchersByShop(Long shopId) {
         requireAllowed("queryVouchersByShop");
-        if (shopId == null || shopId <= 0) throw new IllegalArgumentException("店铺编号必须为正整数");
+        if (shopId == null || shopId <= 0) throw new BusinessException(ErrorCode.INVALID_PARAMETER, "店铺编号必须为正整数");
         Result result = voucherService.queryVoucherOfShop(shopId);
         return result.getSuccess() ? JSONUtil.toJsonStr(result.getData()) : result.getErrorMsg();
     }
@@ -90,8 +90,8 @@ public class AiBusinessTools {
                 .setShopId(request.getShopId())
                 .setReserveTime(request.getReserveTime())
                 .setRemark(request.getRemark());
-        redisTemplate.opsForValue().set(CONFIRM_KEY + token, JSONUtil.toJsonStr(reservation), 5, TimeUnit.MINUTES);
-        redisTemplate.opsForValue().set(STATE_KEY + token, STATE_PREVIEWED, 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(AI_RESERVATION_CONFIRM_KEY + token, JSONUtil.toJsonStr(reservation), 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(AI_RESERVATION_STATE_KEY + token, STATE_PREVIEWED, 5, TimeUnit.MINUTES);
         metrics.increment("ai.reservation", "previewed");
         return Result.ok(new ReservationPreview(token, shop.getName(), request.getReserveTime(), request.getRemark()));
     }
@@ -104,28 +104,28 @@ public class AiBusinessTools {
         }
         String token = request.getConfirmationToken().trim();
         if (!token.matches("[a-fA-F0-9]{32}")) return Result.fail("确认令牌格式错误");
-        String completed = redisTemplate.opsForValue().get(RESULT_KEY + token);
+        String completed = redisTemplate.opsForValue().get(AI_RESERVATION_RESULT_KEY + token);
         if (StrUtil.isNotBlank(completed)) return Result.ok(Long.valueOf(completed));
 
         String lockValue = UUID.randomUUID().toString();
-        String lockKey = LOCK_KEY + token;
+        String lockKey = AI_RESERVATION_LOCK_KEY + token;
         if (!Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, lockValue, 30, TimeUnit.SECONDS))) {
             metrics.increment("ai.reservation", "duplicate_confirm");
             return Result.fail("预约正在确认，请勿重复提交");
         }
         try {
-            completed = redisTemplate.opsForValue().get(RESULT_KEY + token);
+            completed = redisTemplate.opsForValue().get(AI_RESERVATION_RESULT_KEY + token);
             if (StrUtil.isNotBlank(completed)) return Result.ok(Long.valueOf(completed));
-            String state = redisTemplate.opsForValue().get(STATE_KEY + token);
+            String state = redisTemplate.opsForValue().get(AI_RESERVATION_STATE_KEY + token);
             if (!STATE_PREVIEWED.equals(state)) {
                 return Result.fail(state == null ? "确认令牌无效或已超时" : "当前预约状态不可确认：" + state);
             }
-            redisTemplate.opsForValue().set(STATE_KEY + token, STATE_CONFIRMING, 30, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(AI_RESERVATION_STATE_KEY + token, STATE_CONFIRMING, 30, TimeUnit.SECONDS);
             Result result = confirmOnce(token, userId);
             if (result.getSuccess()) {
-                redisTemplate.opsForValue().set(STATE_KEY + token, STATE_CONFIRMED, 24, TimeUnit.HOURS);
+                redisTemplate.opsForValue().set(AI_RESERVATION_STATE_KEY + token, STATE_CONFIRMED, 24, TimeUnit.HOURS);
             } else {
-                redisTemplate.opsForValue().set(STATE_KEY + token, STATE_PREVIEWED, 5, TimeUnit.MINUTES);
+                redisTemplate.opsForValue().set(AI_RESERVATION_STATE_KEY + token, STATE_PREVIEWED, 5, TimeUnit.MINUTES);
             }
             return result;
         } finally {
@@ -141,20 +141,20 @@ public class AiBusinessTools {
         }
         token = token.trim();
         String lockValue = UUID.randomUUID().toString();
-        String lockKey = LOCK_KEY + token;
+        String lockKey = AI_RESERVATION_LOCK_KEY + token;
         if (!Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, lockValue, 30, TimeUnit.SECONDS))) {
             return Result.fail("预约正在处理，请稍后重试");
         }
         try {
-            String payload = redisTemplate.opsForValue().get(CONFIRM_KEY + token);
+            String payload = redisTemplate.opsForValue().get(AI_RESERVATION_CONFIRM_KEY + token);
             if (StrUtil.isBlank(payload)) return Result.fail("预约预览不存在或已超时");
             Reservation reservation = JSONUtil.toBean(payload, Reservation.class);
             if (!userId.equals(reservation.getUserId())) return Result.fail("确认令牌不属于当前用户");
-            if (!STATE_PREVIEWED.equals(redisTemplate.opsForValue().get(STATE_KEY + token))) {
+            if (!STATE_PREVIEWED.equals(redisTemplate.opsForValue().get(AI_RESERVATION_STATE_KEY + token))) {
                 return Result.fail("当前预约状态不可取消");
             }
-            redisTemplate.delete(CONFIRM_KEY + token);
-            redisTemplate.opsForValue().set(STATE_KEY + token, STATE_CANCELLED, 5, TimeUnit.MINUTES);
+            redisTemplate.delete(AI_RESERVATION_CONFIRM_KEY + token);
+            redisTemplate.opsForValue().set(AI_RESERVATION_STATE_KEY + token, STATE_CANCELLED, 5, TimeUnit.MINUTES);
             metrics.increment("ai.reservation", "cancelled_preview");
             return Result.ok();
         } finally {
@@ -163,7 +163,7 @@ public class AiBusinessTools {
     }
 
     private Result confirmOnce(String token, Long userId) {
-        String key = CONFIRM_KEY + token;
+        String key = AI_RESERVATION_CONFIRM_KEY + token;
         String payload = redisTemplate.opsForValue().get(key);
         if (StrUtil.isBlank(payload)) {
             return Result.fail("确认令牌无效或已过期");
@@ -182,7 +182,7 @@ public class AiBusinessTools {
             if (existing != null) result = Result.ok(existing.getId());
         }
         if (result.getSuccess()) {
-            redisTemplate.opsForValue().set(RESULT_KEY + token, String.valueOf(result.getData()), 24, TimeUnit.HOURS);
+            redisTemplate.opsForValue().set(AI_RESERVATION_RESULT_KEY + token, String.valueOf(result.getData()), 24, TimeUnit.HOURS);
             redisTemplate.delete(key);
         }
         metrics.increment("ai.reservation", result.getSuccess() ? "confirmed" : "failed");
@@ -190,11 +190,11 @@ public class AiBusinessTools {
     }
 
     private void requireAllowed(String tool) {
-        if (!toolGuard.isAllowed(tool)) throw new IllegalArgumentException("工具未授权：" + tool);
+        if (!toolGuard.isAllowed(tool)) throw new BusinessException(ErrorCode.FORBIDDEN, "工具未授权：" + tool);
     }
 
     private Long requireLogin() {
-        if (UserHolder.getUser() == null) throw new IllegalStateException("请先登录后使用该工具");
+        if (UserHolder.getUser() == null) throw new BusinessException(ErrorCode.FORBIDDEN, "请先登录后使用该工具");
         return UserHolder.getUser().getId();
     }
 

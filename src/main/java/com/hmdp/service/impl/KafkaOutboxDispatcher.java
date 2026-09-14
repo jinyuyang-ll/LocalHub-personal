@@ -32,9 +32,9 @@ public class KafkaOutboxDispatcher {
             try {
                 kafkaTemplate.send(
                         event.getTopic(),
-                        String.valueOf(event.getAggregateId()),
+                        event.getEventId(),
                         event.getPayload()
-                ).get();
+                ).get(10, java.util.concurrent.TimeUnit.SECONDS);
                 outboxEventService.markSent(event.getId());
                 metrics.increment("outbox.dispatch", "success");
                 log.info("Outbox event dispatched. id={}, topic={}, type={}",

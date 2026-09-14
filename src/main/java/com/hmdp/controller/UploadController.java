@@ -6,6 +6,8 @@ import com.hmdp.dto.Result;
 import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
@@ -30,7 +32,7 @@ public class UploadController {
             log.debug("文件上传成功，{}", fileName);
             return Result.ok(fileName);
         } catch (IOException e) {
-            throw new RuntimeException("文件上传失败", e);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "文件上传失败", e);
         }
     }
 

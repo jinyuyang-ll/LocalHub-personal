@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -106,7 +108,7 @@ public class CacheClient {
                     // 重建缓存
                     this.setWithLogicalExpire(key, newR, time, unit);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "缓存重建失败", e);
                 }finally {
                     // 释放锁
                     unlock(lockKey);
@@ -157,7 +159,8 @@ public class CacheClient {
             // 6.存在，写入redis
             this.set(key, r, time, unit);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "缓存等待被中断", e);
         }finally {
             // 7.释放锁
             unlock(lockKey);

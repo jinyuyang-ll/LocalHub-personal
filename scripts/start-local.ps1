@@ -2,18 +2,24 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$docker = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
-$java = 'C:\Program Files\Zulu\zulu-8\bin\java.exe'
-$maven = 'C:\Users\hello\tools\apache-maven-3.9.11\bin\mvn.cmd'
-$npm = 'C:\Program Files\nodejs\npm.cmd'
+$envFile = Join-Path $root '.env'
+if (-not (Test-Path -LiteralPath $envFile)) { Copy-Item '.env.example' $envFile }
+Get-Content -LiteralPath $envFile | ForEach-Object {
+    if ($_ -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$' -and -not [Environment]::GetEnvironmentVariable($Matches[1], 'Process')) {
+        [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+    }
+}
+$docker = (Get-Command docker -ErrorAction Stop).Source
+$java = (Get-Command java -ErrorAction Stop).Source
+$maven = (Get-Command mvn -ErrorAction Stop).Source
+$npm = (Get-Command npm -ErrorAction Stop).Source
 
 & $docker compose up mysql redis kafka -d --wait
-$env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-8'
 & $maven -DskipTests package
 
 $env:SPRING_DATASOURCE_URL = 'jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8'
 $env:SPRING_DATASOURCE_USERNAME = 'root'
-$env:SPRING_DATASOURCE_PASSWORD = '123456'
+$env:SPRING_DATASOURCE_PASSWORD = $env:MYSQL_ROOT_PASSWORD
 $env:SPRING_REDIS_HOST = '127.0.0.1'
 $env:SPRING_KAFKA_BOOTSTRAP_SERVERS = '127.0.0.1:9092'
 $env:LOCALHUB_KAFKA_ENABLED = 'true'

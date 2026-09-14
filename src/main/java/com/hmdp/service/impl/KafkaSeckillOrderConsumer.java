@@ -4,6 +4,8 @@ import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.config.LocalHubMetrics;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +21,7 @@ import javax.annotation.Resource;
 public class KafkaSeckillOrderConsumer {
 
     @Resource
-    private VoucherOrderServiceImpl voucherOrderService;
+    private OrderCreateService orderCreateService;
 
     @Resource
     private KafkaTemplate<String, String> kafkaTemplate;
@@ -64,7 +66,7 @@ public class KafkaSeckillOrderConsumer {
             voucherOrder.setId(message.getOrderId());
             voucherOrder.setUserId(message.getUserId());
             voucherOrder.setVoucherId(message.getVoucherId());
-            voucherOrderService.createVoucherOrder(voucherOrder);
+            orderCreateService.createOrder(voucherOrder);
             metrics.increment("seckill.consumer", "success");
         } catch (Exception e) {
             metrics.increment("seckill.consumer", "failed");
@@ -99,7 +101,7 @@ public class KafkaSeckillOrderConsumer {
         try {
             kafkaTemplate.send(topic, key, payload).get(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception sendError) {
-            throw new IllegalStateException("Failed to publish Kafka recovery message", sendError);
+            throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "Kafka恢复消息发送失败", sendError);
         }
     }
 
@@ -113,7 +115,7 @@ public class KafkaSeckillOrderConsumer {
 
     private void validate(SeckillOrderMessage message) {
         if (message == null || message.getOrderId() == null || message.getUserId() == null || message.getVoucherId() == null) {
-            throw new IllegalArgumentException("Invalid seckill order message");
+            throw new BusinessException(ErrorCode.INVALID_PARAMETER, "秒杀订单消息格式错误");
         }
     }
 

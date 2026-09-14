@@ -9,6 +9,22 @@ test('home page renders navigation and shops', async ({ page }) => {
   await expect(page.getByText('测试店铺')).toBeVisible()
 })
 
+test('shop card opens cached detail endpoint', async ({ page }) => {
+  await page.route('**/api/shops/search**', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ success: true, data: [{ id: 1, name: '缓存店铺', address: '缓存路' }] })
+  }))
+  await page.route('**/api/shops/1', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ success: true, data: { id: 1, name: '缓存店铺', address: '缓存路' } })
+  }))
+  await page.route('**/api/vouchers/shops/1', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ success: true, data: [] })
+  }))
+  await page.goto('/')
+  await page.getByRole('button', { name: '进入商家详情' }).click()
+  await expect(page).toHaveURL(/\/shops\/1$/)
+  await expect(page.getByText('Caffeine → Redis → MySQL', { exact: false })).toBeVisible()
+})
+
 test('AI chat consumes SSE chunks', async ({ page }) => {
   await page.route('**/api/ai/chat/stream**', route => route.fulfill({
     contentType: 'text/event-stream',

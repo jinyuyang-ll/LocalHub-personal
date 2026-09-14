@@ -9,9 +9,13 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import javax.validation.Valid;
+import javax.validation.constraints.Pattern;
+import org.springframework.validation.annotation.Validated;
 
 @RestController
 @RequestMapping("/api/auth")
+@Validated
 public class ApiAuthController {
 
     @Resource
@@ -19,12 +23,12 @@ public class ApiAuthController {
 
     @PostMapping("/code")
     @RateLimit(key = "api:auth:code", limit = 3, windowSeconds = 60, type = RateLimitType.IP)
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
+    public Result sendCode(@RequestParam("phone") @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone, HttpSession session) {
         return userService.sendCode(phone, session);
     }
 
     @PostMapping("/login")
-    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session) {
+    public Result login(@Valid @RequestBody LoginFormDTO loginForm, HttpSession session) {
         return userService.login(loginForm, session);
     }
 

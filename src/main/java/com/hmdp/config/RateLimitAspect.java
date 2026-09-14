@@ -21,6 +21,8 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.UUID;
 
+import static com.hmdp.utils.RedisConstants.RATE_LIMIT_KEY;
+
 @Slf4j
 @Aspect
 @Component
@@ -60,7 +62,7 @@ public class RateLimitAspect {
     }
 
     private String buildKey(RateLimit rateLimit) {
-        return "rate:" + rateLimit.key() + ":" + buildDimension(rateLimit.type());
+        return RATE_LIMIT_KEY + rateLimit.key() + ":" + buildDimension(rateLimit.type());
     }
 
     private String buildDimension(RateLimitType type) {

@@ -1,22 +1,23 @@
-local voucherId = ARGV[1]
+local reservationKey = KEYS[1]
+local orderKey = KEYS[2]
+local stockKey = KEYS[3]
+local statusKey = KEYS[4]
+local expected = ARGV[1]
 local userId = ARGV[2]
-local orderId = ARGV[3]
-local statusTtlSeconds = ARGV[4]
-local finalStatus = ARGV[5]
-local preserveUserMarker = ARGV[6]
+local statusTtlSeconds = ARGV[3]
+local finalStatus = ARGV[4]
+local preserveUserMarker = ARGV[5]
 
-local reservationKey = 'seckill:reservation:' .. orderId
-local expected = voucherId .. ':' .. userId
 if redis.call('get', reservationKey) ~= expected then
     return 0
 end
 
 redis.call('del', reservationKey)
 if preserveUserMarker == '1' then
-    redis.call('sadd', 'seckill:order:' .. voucherId, userId)
+    redis.call('sadd', orderKey, userId)
 else
-    redis.call('srem', 'seckill:order:' .. voucherId, userId)
+    redis.call('srem', orderKey, userId)
 end
-redis.call('incrby', 'seckill:stock:' .. voucherId, 1)
-redis.call('set', 'seckill:order:status:' .. orderId, finalStatus, 'EX', statusTtlSeconds)
+redis.call('incrby', stockKey, 1)
+redis.call('set', statusKey, finalStatus, 'EX', statusTtlSeconds)
 return 1

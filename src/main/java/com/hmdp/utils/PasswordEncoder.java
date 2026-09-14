@@ -1,5 +1,8 @@
 package com.hmdp.utils;
 
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
+
 
 import cn.hutool.core.util.RandomUtil;
 import org.springframework.util.DigestUtils;
@@ -23,7 +26,7 @@ public class PasswordEncoder {
             return false;
         }
         if(!encodedPassword.contains("@")){
-            throw new RuntimeException("密码格式不正确！");
+            throw new BusinessException(ErrorCode.INVALID_PARAMETER, "密码格式不正确！");
         }
         String[] arr = encodedPassword.split("@");
         // 获取盐

@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import org.junit.jupiter.api.Test;
+import com.hmdp.exception.BusinessException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -13,7 +14,7 @@ class AiToolGuardTest {
     void writeToolRequiresConfirmationInCurrentUserTurn() {
         guard.beginUserTurn("请帮我预约");
         try {
-            assertThrows(IllegalStateException.class, guard::requireExplicitConfirmation);
+            assertThrows(BusinessException.class, guard::requireExplicitConfirmation);
         } finally {
             guard.endUserTurn();
         }

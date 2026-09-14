@@ -34,7 +34,7 @@ async function poll() {
   try {
     attempts.value += 1
     const status = await query()
-    if (status !== 'PROCESSING' || attempts.value >= 30) stopPolling()
+    if (!['PENDING', 'PROCESSING'].includes(String(status)) || attempts.value >= 30) stopPolling()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '查询失败'
     stopPolling()

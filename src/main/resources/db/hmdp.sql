@@ -246,6 +246,7 @@ INSERT INTO `tb_voucher` VALUES (1, 1, '50元代金券', '周一至周日均可�
 DROP TABLE IF EXISTS `tb_reservation`;
 CREATE TABLE `tb_reservation`  (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'primary key',
+  `event_id` varchar(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL COMMENT 'globally unique event id',
   `user_id` bigint(20) UNSIGNED NOT NULL COMMENT 'user id',
   `shop_id` bigint(20) UNSIGNED NOT NULL COMMENT 'shop id',
   `reserve_time` timestamp NOT NULL COMMENT 'reservation time',
@@ -271,9 +272,12 @@ CREATE TABLE `tb_outbox_event`  (
   `retry_count` int(11) NOT NULL DEFAULT 0 COMMENT 'retry count',
   `next_retry_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'next retry time',
   `last_error` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'last error',
+  `version` bigint(20) NOT NULL DEFAULT 0 COMMENT 'optimistic lock version',
+  `sent_time` timestamp NULL DEFAULT NULL COMMENT 'broker acknowledged time',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'update time',
   PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_outbox_event_id` (`event_id`) USING BTREE,
   KEY `idx_outbox_status_retry` (`status`, `next_retry_time`) USING BTREE,
   KEY `idx_outbox_aggregate` (`aggregate_type`, `aggregate_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;

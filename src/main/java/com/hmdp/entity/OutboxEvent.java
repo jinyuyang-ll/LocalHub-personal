@@ -21,6 +21,8 @@ public class OutboxEvent implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    private String eventId;
+
     private String aggregateType;
 
     private Long aggregateId;
@@ -41,6 +43,10 @@ public class OutboxEvent implements Serializable {
     private LocalDateTime nextRetryTime;
 
     private String lastError;
+
+    private Long version;
+
+    private LocalDateTime sentTime;
 
     private LocalDateTime createTime;
 

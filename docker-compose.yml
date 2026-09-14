@@ -10,7 +10,7 @@ services:
       - --log-bin=mysql-bin
       - --binlog-format=ROW
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: hmdp
     ports:
       - "3306:3306"
@@ -73,7 +73,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -119,7 +119,7 @@ services:
     environment:
       canal.instance.master.address: mysql:3306
       canal.instance.dbUsername: root
-      canal.instance.dbPassword: ${MYSQL_ROOT_PASSWORD:-123456}
+      canal.instance.dbPassword: ${MYSQL_ROOT_PASSWORD}
       canal.instance.connectionCharset: UTF-8
       canal.instance.filter.regex: hmdp\\.tb_shop
 

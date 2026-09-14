@@ -6,6 +6,8 @@
         <router-link to="/login">登录</router-link>
         <router-link to="/orders">订单</router-link>
         <router-link to="/reservations">预约</router-link>
+        <router-link to="/blogs">社区</router-link>
+        <router-link to="/me">用户中心</router-link>
         <router-link to="/ai">AI 客服</router-link>
       </nav>
     </header>

@@ -30,6 +30,8 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/api/auth/code",
                         "/api/auth/login",
                         "/api/shops/**",
+                        "/api/vouchers/shops/**",
+                        "/api/blogs/hot",
                         "/api/ai/**",
                         "/actuator/health",
                         "/actuator/info",

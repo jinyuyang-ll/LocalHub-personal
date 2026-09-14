@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -24,7 +25,7 @@ public class ApiAiController {
 
     @PostMapping("/chat")
     @RateLimit(key = "api:ai:chat", limit = 20, windowSeconds = 60, type = RateLimitType.IP)
-    public Result chat(@RequestBody AiChatRequest request) {
+    public Result chat(@Valid @RequestBody AiChatRequest request) {
         return Result.ok(aiCustomerService.chat(request.getMessage(), request.getConversationId()));
     }
 
@@ -48,12 +49,12 @@ public class ApiAiController {
     }
 
     @PostMapping("/reservations/preview")
-    public Result previewReservation(@RequestBody AiReservationRequest request) {
+    public Result previewReservation(@Valid @RequestBody AiReservationRequest request) {
         return aiBusinessTools.previewReservation(request);
     }
 
     @PostMapping("/reservations/confirm")
-    public Result confirmReservation(@RequestBody AiReservationRequest request) {
+    public Result confirmReservation(@Valid @RequestBody AiReservationRequest request) {
         return aiBusinessTools.confirmReservation(request);
     }
 }

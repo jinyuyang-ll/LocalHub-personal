@@ -5,12 +5,13 @@ spring:
     name: hmdp
   datasource:
     driver-class-name: com.mysql.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8
-    username: root
-    password: 123456
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   redis:
-    host: 127.0.0.1
-    port: 6379
+    host: ${SPRING_REDIS_HOST:127.0.0.1}
+    port: ${SPRING_REDIS_PORT:6379}
+    password: ${SPRING_REDIS_PASSWORD:}
     lettuce:
       pool:
         max-active: 10
@@ -20,7 +21,7 @@ spring:
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
   kafka:
-    bootstrap-servers: 127.0.0.1:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -51,8 +52,8 @@ localhub:
     host: 127.0.0.1
     port: 11111
     destination: example
-    username:
-    password:
+    username: ${LOCALHUB_CANAL_USERNAME:}
+    password: ${LOCALHUB_CANAL_PASSWORD:}
   seckill:
     queue: redis-stream
     retry:

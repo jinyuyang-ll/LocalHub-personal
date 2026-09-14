@@ -62,8 +62,10 @@ class InfrastructureIntegrationTest {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
         script.setLocation(new ClassPathResource("seckill_kafka.lua"));
         script.setResultType(Long.class);
-        assertEquals(0L, redis.execute(script, Collections.emptyList(), "99", "7", "1001"));
-        assertEquals(1L, redis.execute(script, Collections.emptyList(), "99", "8", "1002"));
+        assertEquals(0L, redis.execute(script, java.util.Arrays.asList("seckill:stock:99", "seckill:order:99",
+                "seckill:order:status:1001", "seckill:reservation:1001", "seckill:order:owner:1001"), "99", "7", "1001", "1800"));
+        assertEquals(1L, redis.execute(script, java.util.Arrays.asList("seckill:stock:99", "seckill:order:99",
+                "seckill:order:status:1002", "seckill:reservation:1002", "seckill:order:owner:1002"), "99", "8", "1002", "1800"));
         assertEquals("0", redis.opsForValue().get("seckill:stock:99"));
         factory.destroy();
     }
@@ -110,11 +112,13 @@ class InfrastructureIntegrationTest {
         script.setLocation(new ClassPathResource("seckill_compensate.lua"));
         script.setResultType(Long.class);
 
-        assertEquals(1L, redis.execute(script, Collections.emptyList(), "88", "7", "1001", "1800", "FAILED", "0"));
+        assertEquals(1L, redis.execute(script, java.util.Arrays.asList("seckill:reservation:1001", "seckill:order:88",
+                "seckill:stock:88", "seckill:order:status:1001"), "88:7", "7", "1800", "FAILED", "0"));
         assertEquals("1", redis.opsForValue().get("seckill:stock:88"));
         assertEquals(false, redis.opsForSet().isMember("seckill:order:88", "7"));
         assertEquals("FAILED", redis.opsForValue().get("seckill:order:status:1001"));
-        assertEquals(0L, redis.execute(script, Collections.emptyList(), "88", "7", "1001", "1800", "FAILED", "0"));
+        assertEquals(0L, redis.execute(script, java.util.Arrays.asList("seckill:reservation:1001", "seckill:order:88",
+                "seckill:stock:88", "seckill:order:status:1001"), "88:7", "7", "1800", "FAILED", "0"));
         assertEquals("1", redis.opsForValue().get("seckill:stock:88"));
         factory.destroy();
     }
@@ -133,7 +137,8 @@ class InfrastructureIntegrationTest {
         script.setLocation(new ClassPathResource("seckill_compensate.lua"));
         script.setResultType(Long.class);
 
-        assertEquals(1L, redis.execute(script, Collections.emptyList(), "89", "7", "1002", "1800", "DUPLICATE", "1"));
+        assertEquals(1L, redis.execute(script, java.util.Arrays.asList("seckill:reservation:1002", "seckill:order:89",
+                "seckill:stock:89", "seckill:order:status:1002"), "89:7", "7", "1800", "DUPLICATE", "1"));
         assertEquals("1", redis.opsForValue().get("seckill:stock:89"));
         assertEquals(true, redis.opsForSet().isMember("seckill:order:89", "7"));
         assertEquals("DUPLICATE", redis.opsForValue().get("seckill:order:status:1002"));

@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 
 - 前端：http://localhost:5173
 - 后端：http://localhost:8081
-- MySQL：localhost:3306，root / 123456
+- MySQL：localhost:3306，账号 `root`，密码读取本地 `.env` 的 `MYSQL_ROOT_PASSWORD`
 - Redis：localhost:6379
 - Kafka：localhost:9092
 

@@ -1,6 +1,8 @@
 package com.hmdp.service.impl;
 
 import org.springframework.stereotype.Component;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -36,7 +38,7 @@ public class AiToolGuard {
         String message = USER_TURN.get();
         String normalized = message == null ? "" : message.toLowerCase();
         if (!normalized.contains("确认") && !normalized.contains("confirm")) {
-            throw new IllegalStateException("必须由用户明确确认后才能创建预约");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "必须由用户明确确认后才能创建预约");
         }
     }
 }

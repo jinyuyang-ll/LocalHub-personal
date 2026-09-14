@@ -10,6 +10,7 @@
     <article v-for="shop in shops" :key="shop.id" class="card">
       <h3>{{ shop.name }}</h3>
       <p>{{ shop.address }}</p>
+      <button @click="router.push(`/shops/${shop.id}`)">进入商家详情</button>
       <button @click="loadVouchers(shop.id)">查看优惠券</button>
     </article>
     <section v-if="vouchers.length">

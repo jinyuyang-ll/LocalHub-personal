@@ -20,7 +20,7 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class KafkaSeckillOrderConsumerTest {
 
-    @Mock private VoucherOrderServiceImpl voucherOrderService;
+    @Mock private OrderCreateService orderCreateService;
     @Mock private KafkaTemplate<String, String> kafkaTemplate;
     @Mock private LocalHubMetrics metrics;
     @Mock private SeckillKafkaRecoveryService recoveryService;
@@ -39,7 +39,7 @@ class KafkaSeckillOrderConsumerTest {
     @Test
     void failedFirstAttemptIsPublishedToRetryTopic() {
         doThrow(new IllegalStateException("database unavailable"))
-                .when(voucherOrderService).createVoucherOrder(org.mockito.ArgumentMatchers.any());
+                .when(orderCreateService).createOrder(org.mockito.ArgumentMatchers.any());
         String payload = "{\"orderId\":1,\"userId\":2,\"voucherId\":3,\"retryCount\":0}";
         consumer.consume(payload);
         verify(kafkaTemplate).send(eq("retry-topic"), eq("1"), anyString());
@@ -49,7 +49,7 @@ class KafkaSeckillOrderConsumerTest {
     @Test
     void exhaustedAttemptIsPublishedToDeadLetterTopic() {
         doThrow(new IllegalStateException("database unavailable"))
-                .when(voucherOrderService).createVoucherOrder(org.mockito.ArgumentMatchers.any());
+                .when(orderCreateService).createOrder(org.mockito.ArgumentMatchers.any());
         String payload = "{\"orderId\":1,\"userId\":2,\"voucherId\":3,\"retryCount\":2}";
         consumer.consumeRetry(payload);
         verify(kafkaTemplate).send(eq("dlt-topic"), eq("1"), anyString());

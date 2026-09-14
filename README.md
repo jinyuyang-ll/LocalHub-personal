@@ -36,7 +36,7 @@ docker compose up --build -d
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `MYSQL_ROOT_PASSWORD` | `123456` | 本地 MySQL 密码 |
+| `MYSQL_ROOT_PASSWORD` | 无 | MySQL 密码，仅写入本地 `.env` |
 | `LOCALHUB_AI_ENABLED` | `false` | 是否调用真实兼容 OpenAI 协议的模型 |
 | `LOCALHUB_AI_MODEL` | `qwen-plus` | 模型名 |
 | `LOCALHUB_AI_BASE_URL` | DashScope compatible endpoint | 模型服务地址 |
@@ -48,13 +48,31 @@ docker compose up --build -d
 
 真实 AI 示例：编辑 `.env`，设置 `LOCALHUB_AI_ENABLED=true` 和 `LOCALHUB_AI_API_KEY`，然后重新运行 `docker compose up --build -d`。子业务空间或非北京地域应同时填写该空间对应的对话与 Embedding Base URL。
 
+已有旧数据库的用户应在升级前备份，然后只执行一次 `src/main/resources/db/upgrade-outbox-v2.sql`；全新 Docker 数据卷会直接使用最新版 `hmdp.sql`，无需执行升级脚本。
+
 ## 核心实现
 
 - Redisson 复用 `spring.redis.*` 配置，容器内连接 Compose 服务名 `redis`，不再硬编码本机地址。
 - 首页商家搜索使用 Caffeine + Redis 两级缓存；店铺更新时清理本地缓存并递增 Redis 查询版本，避免通配符删除。
-- Kafka 秒杀在 Lua 预扣时记录预约凭证；生产失败写入 Redis 延迟重试集合，消费失败进入重试主题，耗尽后发送独立 DLT 并通过 Lua 幂等恢复库存和购买资格。
+- 订单域拆分为秒杀入口、消息消费、事务建单、状态、支付、取消、关单与补偿组件；Kafka 生产失败写入 Redis 延迟重试集合，消费失败进入重试主题，耗尽后发送独立 DLT 并通过 Lua 幂等恢复库存和购买资格。
+- 秒杀状态采用 `PENDING → PROCESSING → SUCCESS / FAILED / CLOSED` 生命周期；成功保留 24 小时，失败及原因保留 7 天。
+- Outbox 使用全局 `event_id`、聚合 ID、乐观锁版本与发送时间；订单主键及用户-优惠券唯一键保证 Kafka 重复消费不会重复落单。
 - AI 客服通过 LangChain4j `AiServices` 和 `@Tool` 使用真实模型 Function Calling；查询工具只读，预约采用 `PREVIEWED → CONFIRMING → CONFIRMED / CANCELLED` 状态机、当前轮次显式确认、分布式互斥和结果幂等。
-- FAQ 按标题和段落切块，使用百炼 Embedding、关键词召回、Query Rewrite、加权混合召回和二阶段重排；低于阈值时拒答。模型不可用时仅降级到关键词检索，不生成伪向量。
+- FAQ 按标题和段落切块，使用百炼 Embedding 与进程内向量索引、关键词召回、Query Rewrite、加权混合召回和二阶段重排；低于阈值时拒答。项目不宣称使用 Milvus/FAISS，模型不可用时仅降级到关键词检索，不生成伪向量。
+- AI Agent Workflow 显式编排 Planner → LangChain4j Tool Executor → Redis Conversation Memory → Guarded Response，工具层再次校验登录用户、资源归属和写操作确认。
+- 生产代码不调用 Redis `KEYS`；Lua 的业务 Key 由 `RedisConstants` 统一生成并通过 `KEYS[]` 传入，避免散落硬编码。
+
+订单域职责对应关系：
+
+| 组件 | 职责 |
+|---|---|
+| `SeckillService` | Lua 秒杀入口与 Kafka 首次投递 |
+| `SeckillMessageConsumer` / `KafkaSeckillOrderConsumer` | Redis Stream / Kafka 消费 |
+| `OrderCreateService` | 库存、订单与 Outbox 的原子事务 |
+| `OrderStatusService` | 状态生命周期与所有权校验 |
+| `OrderPaymentService` / `OrderCancelService` | 支付与取消 |
+| `OrderCloseJob` | 超时自动关单 |
+| `SeckillRollbackService` | Lua 原子幂等回滚与失败原因记录 |
 
 ## 可选组件
 
@@ -84,11 +102,12 @@ Testcontainers 测试需要 Docker；Docker 不可用时会自动跳过。Window
 ## 演示流程
 
 1. 打开登录页，发送验证码并登录；开发环境验证码可从后端日志查看。
-2. 首页搜索商家，查看优惠券并提交秒杀。
+2. 首页点击商家进入详情，真实触发 Bloom → Caffeine → Redis → MySQL 缓存链路，再查看优惠券并提交秒杀。
 3. 复制返回的订单号，在订单页点击“自动轮询”，观察 `PROCESSING` 转为最终状态。
 4. 在 AI 客服输入规则问题，观察 SSE 分块输出；输入“查询订单 订单号”触发真实订单状态工具。
 5. 在 AI 预约助手填写店铺与时间，先预览，再确认创建；确认令牌只能使用一次。
-6. 查看 `/actuator/prometheus`，或启用 monitoring profile 后在 Prometheus 查询 `http_server_requests_seconds_count`。
+6. 打开社区演示热门、关注流、点赞和评论；在用户中心查看订单、预约和签到。
+7. 查看 `/actuator/prometheus`，或启用 monitoring profile 后在 Prometheus 查询 `http_server_requests_seconds_count`。
 
 ## 压测
 

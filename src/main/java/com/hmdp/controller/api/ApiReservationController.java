@@ -8,9 +8,13 @@ import com.hmdp.service.IReservationService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
+import javax.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 
 @RestController
 @RequestMapping("/api/reservations")
+@Validated
 public class ApiReservationController {
 
     @Resource
@@ -18,12 +22,12 @@ public class ApiReservationController {
 
     @PostMapping
     @RateLimit(key = "api:reservation:create", limit = 10, windowSeconds = 60, type = RateLimitType.USER)
-    public Result create(@RequestBody Reservation reservation) {
+    public Result create(@Valid @RequestBody Reservation reservation) {
         return reservationService.createReservation(reservation);
     }
 
     @GetMapping("/{id}")
-    public Result query(@PathVariable("id") Long id) {
+    public Result query(@PathVariable("id") @Positive Long id) {
         return reservationService.queryReservation(id);
     }
 
@@ -33,7 +37,7 @@ public class ApiReservationController {
     }
 
     @PostMapping("/{id}/cancel")
-    public Result cancel(@PathVariable("id") Long id) {
+    public Result cancel(@PathVariable("id") @Positive Long id) {
         return reservationService.cancelReservation(id);
     }
 }

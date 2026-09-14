@@ -2,6 +2,10 @@ package com.hmdp.config;
 
 import com.hmdp.dto.Result;
 import lombok.extern.slf4j.Slf4j;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.exception.ErrorCode;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import javax.validation.ConstraintViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -9,9 +13,22 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class WebExceptionAdvice {
 
+    @ExceptionHandler(BusinessException.class)
+    public Result handleBusinessException(BusinessException e) {
+        return Result.fail(e.getErrorCode().getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
+    public Result handleValidationException(Exception e) {
+        String message = e instanceof MethodArgumentNotValidException
+                ? ((MethodArgumentNotValidException) e).getBindingResult().getAllErrors().get(0).getDefaultMessage()
+                : e.getMessage();
+        return Result.fail(ErrorCode.INVALID_PARAMETER.getCode(), message);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public Result handleRuntimeException(RuntimeException e) {
         log.error(e.toString(), e);
-        return Result.fail("服务器异常");
+        return Result.fail(ErrorCode.INTERNAL_ERROR.getCode(), ErrorCode.INTERNAL_ERROR.getMessage());
     }
 }

@@ -15,5 +15,4 @@ public interface IOutboxEventService extends IService<OutboxEvent> {
 
     void markFailed(Long eventId, String errorMessage);
 
-    void dispatchPendingEvents();
 }

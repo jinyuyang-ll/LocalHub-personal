@@ -3,18 +3,16 @@ package com.hmdp.service.impl;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.config.LocalHubMetrics;
 import com.hmdp.dto.SeckillOrderMessage;
+import com.hmdp.enums.SeckillOrderState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -25,17 +23,11 @@ import static com.hmdp.utils.RedisConstants.*;
 @ConditionalOnProperty(prefix = "localhub.seckill", name = "queue", havingValue = "kafka")
 public class SeckillKafkaRecoveryService {
 
-    private static final DefaultRedisScript<Long> COMPENSATE_SCRIPT;
-
-    static {
-        COMPENSATE_SCRIPT = new DefaultRedisScript<>();
-        COMPENSATE_SCRIPT.setLocation(new ClassPathResource("seckill_compensate.lua"));
-        COMPENSATE_SCRIPT.setResultType(Long.class);
-    }
-
     @Resource private StringRedisTemplate redis;
     @Resource private KafkaTemplate<String, String> kafkaTemplate;
     @Resource private LocalHubMetrics metrics;
+    @Resource private SeckillCompensationService compensationService;
+    @Resource private OrderStatusService orderStatusService;
 
     @Value("${localhub.kafka.topics.seckill-orders:localhub.seckill.orders}")
     private String ordersTopic;
@@ -65,24 +57,9 @@ public class SeckillKafkaRecoveryService {
     }
 
     public boolean compensate(SeckillOrderMessage message, String reason) {
-        return compensate(message, reason, "FAILED", false);
-    }
-
-    public boolean compensate(SeckillOrderMessage message, String reason, String finalStatus,
-                              boolean preserveUserMarker) {
-        if (message == null || message.getOrderId() == null || message.getUserId() == null || message.getVoucherId() == null) {
-            return false;
-        }
-        Long result = redis.execute(COMPENSATE_SCRIPT, Collections.emptyList(),
-                String.valueOf(message.getVoucherId()), String.valueOf(message.getUserId()),
-                String.valueOf(message.getOrderId()), String.valueOf(TimeUnit.MINUTES.toSeconds(SECKILL_ORDER_STATUS_TTL)),
-                finalStatus, preserveUserMarker ? "1" : "0");
-        complete(message.getOrderId());
-        boolean compensated = result != null && result == 1L;
-        metrics.increment("seckill.compensation", compensated ? "restored" : "idempotent_skip");
-        log.warn("Seckill reservation compensation. orderId={}, restored={}, reason={}",
-                message.getOrderId(), compensated, reason);
-        return compensated;
+        boolean restored = compensationService.compensateFailure(message, reason);
+        if (message != null && message.getOrderId() != null) complete(message.getOrderId());
+        return restored;
     }
 
     @Scheduled(fixedDelayString = "${localhub.seckill.publish-retry.interval-ms:5000}")
@@ -104,6 +81,7 @@ public class SeckillKafkaRecoveryService {
             kafkaTemplate.send(ordersTopic, orderId, JSONUtil.toJsonStr(message)).get(10, TimeUnit.SECONDS);
             redis.opsForHash().delete(SECKILL_PUBLISH_PAYLOAD_HASH, orderId);
             redis.opsForZSet().remove(SECKILL_PUBLISH_RETRY_ZSET, orderId);
+            orderStatusService.transition(message.getOrderId(), SeckillOrderState.PROCESSING);
             metrics.increment("seckill.publish", "retry_success");
         } catch (Exception e) {
             int attempts = message.getRetryCount() == null ? 1 : message.getRetryCount() + 1;

@@ -14,13 +14,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, unwrap } from '../api'
 
 const shopId = ref('')
 const reserveTime = ref('')
 const remark = ref('')
 const reservations = ref<any[]>([])
+const route = useRoute()
 
 async function create() {
   const id = unwrap(await api.post('/reservations', {
@@ -39,4 +41,5 @@ async function cancel(id: number) {
   await api.post(`/reservations/${id}/cancel`)
   await loadMine()
 }
+onMounted(() => { if (typeof route.query.shopId === 'string') shopId.value = route.query.shopId })
 </script>
