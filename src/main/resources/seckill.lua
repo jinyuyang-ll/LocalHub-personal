@@ -15,10 +15,16 @@ local statusKey = KEYS[3]
 local reservationKey = KEYS[4]
 local streamKey = KEYS[5]
 local ownerKey = KEYS[6]
+local reservationAuditKey = KEYS[7]
+local reservationAuditHash = KEYS[8]
 
 -- 3.脚本业务
 -- 3.1.判断库存是否充足 get stockKey
-if(tonumber(redis.call('get', stockKey)) <= 0) then
+local stock = tonumber(redis.call('get', stockKey))
+if(stock == nil) then
+    return 3
+end
+if(stock <= 0) then
     -- 3.2.库存不足，返回1
     return 1
 end
@@ -34,6 +40,8 @@ redis.call('sadd', orderKey, userId)
 -- 3.6.发送消息到队列中， XADD stream.orders * k1 v1 k2 v2 ...
 redis.call('set', reservationKey, voucherId .. ':' .. userId, 'EX', 86400)
 redis.call('set', ownerKey, userId, 'EX', 604800)
+redis.call('zadd', reservationAuditKey, redis.call('time')[1], orderId)
+redis.call('hset', reservationAuditHash, orderId, voucherId .. ':' .. userId)
 redis.call('xadd', streamKey, '*', 'userId', userId, 'voucherId', voucherId, 'id', orderId)
 redis.call('set', statusKey, 'PROCESSING', 'EX', ARGV[4])
 return 0

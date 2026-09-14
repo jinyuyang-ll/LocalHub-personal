@@ -6,11 +6,14 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 public class LocalHubMetrics {
 
     private final MeterRegistry registry;
+    private final ConcurrentHashMap<String, AtomicLong> gauges = new ConcurrentHashMap<>();
 
     public LocalHubMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -25,5 +28,21 @@ public class LocalHubMetrics {
                 .publishPercentileHistogram()
                 .register(registry)
                 .record(System.nanoTime() - startedNanos, TimeUnit.NANOSECONDS);
+    }
+
+    public void setGauge(String name, long value) {
+        gauges.computeIfAbsent(name, key -> {
+            AtomicLong gauge = new AtomicLong();
+            registry.gauge("localhub." + key, gauge);
+            return gauge;
+        }).set(value);
+    }
+
+    public void incrementGauge(String name) {
+        gauges.computeIfAbsent(name, key -> {
+            AtomicLong gauge = new AtomicLong();
+            registry.gauge("localhub." + key, gauge);
+            return gauge;
+        }).incrementAndGet();
     }
 }

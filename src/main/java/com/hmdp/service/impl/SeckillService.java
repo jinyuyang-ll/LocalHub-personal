@@ -4,7 +4,6 @@ import cn.hutool.json.JSONUtil;
 import com.hmdp.config.LocalHubMetrics;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.SeckillOrderMessage;
-import com.hmdp.enums.SeckillOrderState;
 import com.hmdp.exception.BusinessException;
 import com.hmdp.exception.ErrorCode;
 import com.hmdp.utils.RedisIdWorker;
@@ -16,11 +15,11 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.util.concurrent.ListenableFutureCallback;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
 
@@ -35,7 +34,6 @@ public class SeckillService {
     @Resource private KafkaTemplate<String, String> kafkaTemplate;
     @Resource private ObjectProvider<SeckillKafkaRecoveryService> recoveryProvider;
     @Resource private SeckillCompensationService compensationService;
-    @Resource private OrderStatusService orderStatusService;
     @Resource private LocalHubMetrics metrics;
 
     @Value("${localhub.seckill.queue:redis-stream}") private String queue;
@@ -56,47 +54,67 @@ public class SeckillService {
             metrics.increment("seckill.accept", code == 1 ? "sold_out" : code == 2 ? "duplicate" : "failed");
             if (code == 1) throw new BusinessException(ErrorCode.STOCK_EMPTY);
             if (code == 2) throw new BusinessException(ErrorCode.ORDER_EXIST);
+            if (code == 3) throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "秒杀库存缓存尚未初始化");
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "秒杀请求处理失败");
         }
-        if (kafka) publish(orderId, userId, voucherId);
+        if (kafka) publishAsync(orderId, userId, voucherId);
         metrics.increment("seckill.accept", "success");
         return Result.ok(orderId);
     }
 
-    private void publish(long orderId, Long userId, Long voucherId) {
+    private void publishAsync(long orderId, Long userId, Long voucherId) {
         SeckillOrderMessage message = new SeckillOrderMessage();
         message.setOrderId(orderId); message.setUserId(userId); message.setVoucherId(voucherId); message.setRetryCount(0);
         try {
             kafkaTemplate.send(ordersTopic, String.valueOf(orderId), JSONUtil.toJsonStr(message))
-                    .get(10, TimeUnit.SECONDS);
-            orderStatusService.transition(orderId, SeckillOrderState.PROCESSING);
-            metrics.increment("seckill.publish", "success");
-        } catch (Exception error) {
-            SeckillKafkaRecoveryService recovery = recoveryProvider.getIfAvailable();
-            if (recovery == null) {
-                compensationService.compensateFailure(message, "Kafka recovery service unavailable");
-                throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "Kafka补偿服务不可用", error);
-            }
+                    .addCallback(new ListenableFutureCallback<org.springframework.kafka.support.SendResult<String, String>>() {
+                        @Override
+                        public void onSuccess(org.springframework.kafka.support.SendResult<String, String> result) {
+                            metrics.increment("seckill.publish", "success");
+                        }
+
+                        @Override
+                        public void onFailure(Throwable error) {
+                            scheduleOrCompensate(message, error);
+                        }
+                    });
+        } catch (RuntimeException error) {
+            scheduleOrCompensate(message, error);
+        }
+    }
+
+    private void scheduleOrCompensate(SeckillOrderMessage message, Throwable error) {
+        SeckillKafkaRecoveryService recovery = recoveryProvider.getIfAvailable();
+        if (recovery == null) {
+            compensationService.compensateFailure(message, "Kafka recovery service unavailable");
+            log.error("Kafka recovery service unavailable; reservation compensated. orderId={}", message.getOrderId(), error);
+            return;
+        }
+        try {
+            recovery.schedulePublish(message, error);
+            log.warn("Kafka publish failed; durable retry scheduled. orderId={}", message.getOrderId(), error);
+        } catch (RuntimeException scheduleError) {
             try {
-                recovery.schedulePublish(message, error);
-            } catch (RuntimeException scheduleError) {
                 compensationService.compensateFailure(message, "Kafka publish and durable retry both failed");
-                throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "Kafka发送失败，已回滚秒杀资格", scheduleError);
+            } catch (RuntimeException compensationError) {
+                scheduleError.addSuppressed(compensationError);
             }
-            log.warn("Kafka publish failed; durable retry scheduled. orderId={}", orderId, error);
+            log.error("Kafka publish, retry scheduling and compensation failed. orderId={}", message.getOrderId(), scheduleError);
         }
     }
 
     private java.util.List<String> kafkaKeys(Long voucherId, long orderId) {
         return Arrays.asList(SECKILL_STOCK_KEY + voucherId, SECKILL_ORDER_KEY + voucherId,
                 SECKILL_ORDER_STATUS_KEY + orderId, SECKILL_RESERVATION_KEY + orderId,
-                SECKILL_ORDER_OWNER_KEY + orderId);
+                SECKILL_ORDER_OWNER_KEY + orderId, SECKILL_RESERVATION_AUDIT_ZSET,
+                SECKILL_RESERVATION_AUDIT_HASH);
     }
 
     private java.util.List<String> streamKeys(Long voucherId, long orderId) {
         return Arrays.asList(SECKILL_STOCK_KEY + voucherId, SECKILL_ORDER_KEY + voucherId,
                 SECKILL_ORDER_STATUS_KEY + orderId, SECKILL_RESERVATION_KEY + orderId,
-                STREAM_ORDERS_KEY, SECKILL_ORDER_OWNER_KEY + orderId);
+                STREAM_ORDERS_KEY, SECKILL_ORDER_OWNER_KEY + orderId, SECKILL_RESERVATION_AUDIT_ZSET,
+                SECKILL_RESERVATION_AUDIT_HASH);
     }
 
     private static DefaultRedisScript<Long> script(String path) {

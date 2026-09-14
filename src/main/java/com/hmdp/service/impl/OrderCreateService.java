@@ -15,11 +15,15 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
 import static com.hmdp.utils.RedisConstants.ORDER_LOCK_KEY;
+import static com.hmdp.utils.RedisConstants.SECKILL_RESERVATION_KEY;
+import static com.hmdp.utils.RedisConstants.SECKILL_RESERVATION_AUDIT_ZSET;
+import static com.hmdp.utils.RedisConstants.SECKILL_RESERVATION_AUDIT_HASH;
 
 @Service
 public class OrderCreateService {
@@ -31,6 +35,7 @@ public class OrderCreateService {
     @Resource private OrderStatusService orderStatusService;
     @Resource private SeckillCompensationService compensationService;
     @Resource private ObjectProvider<SeckillKafkaRecoveryService> recoveryProvider;
+    @Resource private StringRedisTemplate redis;
 
     @Transactional
     public void createOrder(VoucherOrder order) {
@@ -73,6 +78,12 @@ public class OrderCreateService {
             orderStatusService.transition(orderId, SeckillOrderState.SUCCESS);
             SeckillKafkaRecoveryService recovery = recoveryProvider.getIfAvailable();
             if (recovery != null) recovery.complete(orderId);
+            else {
+                String id = String.valueOf(orderId);
+                redis.delete(SECKILL_RESERVATION_KEY + id);
+                redis.opsForZSet().remove(SECKILL_RESERVATION_AUDIT_ZSET, id);
+                redis.opsForHash().delete(SECKILL_RESERVATION_AUDIT_HASH, id);
+            }
         };
         TransactionHooks.afterCommit(action);
     }

@@ -9,10 +9,14 @@ public interface IOutboxEventService extends IService<OutboxEvent> {
 
     void createEvent(String aggregateType, Long aggregateId, String eventType, String topic, String payload);
 
-    List<OutboxEvent> queryPendingEvents(int limit);
+    List<OutboxEvent> claimPendingEvents(int limit, String workerId, java.time.LocalDateTime lockedUntil);
 
-    void markSent(Long eventId);
+    void markSent(Long eventId, String workerId);
 
-    void markFailed(Long eventId, String errorMessage);
+    void markFailed(Long eventId, String workerId, String errorMessage);
+
+    long pendingCount();
+
+    long oldestPendingAgeSeconds();
 
 }

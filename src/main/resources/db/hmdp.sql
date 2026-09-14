@@ -275,11 +275,14 @@ CREATE TABLE `tb_outbox_event`  (
   `last_error` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'last error',
   `version` bigint(20) NOT NULL DEFAULT 0 COMMENT 'optimistic lock version',
   `sent_time` timestamp NULL DEFAULT NULL COMMENT 'broker acknowledged time',
+  `locked_by` varchar(64) CHARACTER SET ascii COLLATE ascii_general_ci NULL DEFAULT NULL COMMENT 'relay lease owner',
+  `locked_until` timestamp NULL DEFAULT NULL COMMENT 'relay lease deadline',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'update time',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE KEY `uk_outbox_event_id` (`event_id`) USING BTREE,
   KEY `idx_outbox_status_retry` (`status`, `next_retry_time`) USING BTREE,
+  KEY `idx_outbox_lease` (`status`, `locked_until`) USING BTREE,
   KEY `idx_outbox_aggregate` (`aggregate_type`, `aggregate_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
@@ -298,6 +301,21 @@ CREATE TABLE `tb_voucher_order`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE KEY `uk_user_voucher` (`user_id`, `voucher_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
+
+DROP TABLE IF EXISTS `tb_order_release`;
+CREATE TABLE `tb_order_release` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `order_id` bigint(20) NOT NULL,
+  `user_id` bigint(20) UNSIGNED NOT NULL,
+  `voucher_id` bigint(20) UNSIGNED NOT NULL,
+  `reason` varchar(128) NOT NULL,
+  `redis_released` tinyint(1) NOT NULL DEFAULT 0,
+  `released_time` timestamp NULL DEFAULT NULL,
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_order_release_order` (`order_id`),
+  KEY `idx_order_release_pending` (`redis_released`, `create_time`)
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
 -- ----------------------------
 -- Records of tb_voucher_order

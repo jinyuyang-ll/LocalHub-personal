@@ -48,6 +48,10 @@ public class OutboxEvent implements Serializable {
 
     private LocalDateTime sentTime;
 
+    private String lockedBy;
+
+    private LocalDateTime lockedUntil;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

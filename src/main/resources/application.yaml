@@ -61,6 +61,10 @@ localhub:
     publish-retry:
       max-attempts: 5
       interval-ms: 5000
+      lease-ms: 30000
+    reconciliation:
+      interval-ms: 60000
+      stale-seconds: 300
   ai:
     enabled: false
     provider: dashscope

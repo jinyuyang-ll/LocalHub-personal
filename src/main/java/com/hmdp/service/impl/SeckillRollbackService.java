@@ -41,12 +41,14 @@ public class SeckillRollbackService {
                         SECKILL_RESERVATION_KEY + message.getOrderId(),
                         SECKILL_ORDER_KEY + message.getVoucherId(),
                         SECKILL_STOCK_KEY + message.getVoucherId(),
-                        SECKILL_ORDER_STATUS_KEY + message.getOrderId()),
+                        SECKILL_ORDER_STATUS_KEY + message.getOrderId(),
+                        SECKILL_RESERVATION_AUDIT_ZSET, SECKILL_RESERVATION_AUDIT_HASH),
                 message.getVoucherId() + ":" + message.getUserId(),
                 String.valueOf(message.getUserId()), String.valueOf(finalState.getTtlSeconds()), finalState.name(),
-                preserveUserMarker ? "1" : "0");
+                preserveUserMarker ? "1" : "0", String.valueOf(message.getOrderId()));
         boolean restored = result != null && result == 1L;
         if (restored) orderStatusService.recordFailure(message.getOrderId(), reason);
+        if (restored) metrics.incrementGauge("compensation.count");
         metrics.increment("seckill.rollback", restored ? "restored" : "idempotent_skip");
         log.warn("Seckill rollback. orderId={}, restored={}, state={}, reason={}",
                 message.getOrderId(), restored, finalState, reason);

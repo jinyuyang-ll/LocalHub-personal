@@ -31,7 +31,13 @@ public class RedisConstants {
     public static final String SECKILL_RESERVATION_KEY = "seckill:reservation:";
     public static final String SECKILL_PUBLISH_PAYLOAD_HASH = "seckill:kafka:publish:payload";
     public static final String SECKILL_PUBLISH_RETRY_ZSET = "seckill:kafka:publish:retry";
+    public static final String SECKILL_PUBLISH_PROCESSING_ZSET = "seckill:kafka:publish:processing";
+    public static final String SECKILL_RESERVATION_AUDIT_ZSET = "seckill:reservation:audit";
+    public static final String SECKILL_RESERVATION_AUDIT_HASH = "seckill:reservation:audit:payload";
     public static final String ORDER_LOCK_KEY = "lock:order:";
+    public static final String ORDER_CLOSE_JOB_LOCK_KEY = "lock:job:order-close";
+    public static final String SECKILL_RECONCILE_JOB_LOCK_KEY = "lock:job:seckill-reconcile";
+    public static final String SHOP_BLOOM_REBUILD_LOCK_KEY = "lock:job:shop-bloom-rebuild";
     public static final String STREAM_ORDERS_KEY = "stream.orders";
     public static final String STREAM_ORDERS_GROUP = "g1";
     public static final String STREAM_ORDERS_CONSUMER = "c1";
