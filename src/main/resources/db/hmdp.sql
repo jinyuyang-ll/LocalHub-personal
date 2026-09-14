@@ -263,6 +263,7 @@ CREATE TABLE `tb_reservation`  (
 DROP TABLE IF EXISTS `tb_outbox_event`;
 CREATE TABLE `tb_outbox_event`  (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'primary key',
+  `event_id` varchar(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL COMMENT 'globally unique event id',
   `aggregate_type` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'aggregate type',
   `aggregate_id` bigint(20) NOT NULL COMMENT 'aggregate id',
   `event_type` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'event type',
