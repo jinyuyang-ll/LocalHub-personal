@@ -14,11 +14,13 @@ import com.hmdp.utils.SystemConstants;
 import com.hmdp.config.LocalHubMetrics;
 import cn.hutool.json.JSONUtil;
 import org.springframework.data.geo.Distance;
+import org.springframework.data.geo.Circle;
+import org.springframework.data.geo.Point;
+import org.springframework.data.geo.Metrics;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -90,12 +92,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         // 1.更新数据库
         updateById(shop);
-        // 2.删除缓存
-        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
-        shopLocalCache.invalidate(id);
-        shopSearchLocalCache.invalidateAll();
-        stringRedisTemplate.opsForValue().increment(CACHE_SHOP_SEARCH_VERSION_KEY);
-        redisBloomFilter.put(SHOP_BLOOM_KEY, id, SHOP_BLOOM_SIZE);
+        // Only invalidate after the database transaction commits. Otherwise another
+        // request can repopulate the cache with the old uncommitted row.
+        TransactionHooks.afterCommit(() -> {
+            stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+            shopLocalCache.invalidate(id);
+            shopSearchLocalCache.invalidateAll();
+            stringRedisTemplate.opsForValue().increment(CACHE_SHOP_SEARCH_VERSION_KEY);
+            redisBloomFilter.put(SHOP_BLOOM_KEY, id, SHOP_BLOOM_SIZE);
+        });
         return Result.ok();
     }
 
@@ -151,13 +156,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         // 3.查询redis、按照距离排序、分页。结果：shopId、distance
         String key = SHOP_GEO_KEY + typeId;
-        GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo() // GEOSEARCH key BYLONLAT x y BYRADIUS 10 WITHDISTANCE
-                .search(
-                        key,
-                        GeoReference.fromCoordinate(x, y),
-                        new Distance(5000),
-                        RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end)
-                );
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo()
+                .radius(key, new Circle(new Point(x, y), new Distance(5, Metrics.KILOMETERS)),
+                        RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs().includeDistance().limit(end));
         // 4.解析出id
         if (results == null) {
             return Result.ok(Collections.emptyList());

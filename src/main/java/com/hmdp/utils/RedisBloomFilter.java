@@ -4,6 +4,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.Collection;
+import java.util.UUID;
 
 @Component
 public class RedisBloomFilter {
@@ -27,6 +29,17 @@ public class RedisBloomFilter {
             }
         }
         return true;
+    }
+
+    public void rebuild(String key, Collection<Long> values, long size) {
+        String temporaryKey = key + ":rebuild:" + UUID.randomUUID();
+        stringRedisTemplate.delete(temporaryKey);
+        if (values == null || values.isEmpty()) {
+            stringRedisTemplate.opsForValue().setBit(temporaryKey, 0, false);
+        } else {
+            for (Long value : values) put(temporaryKey, value, size);
+        }
+        stringRedisTemplate.rename(temporaryKey, key);
     }
 
     private long hash(Long value, int seed, long size) {
