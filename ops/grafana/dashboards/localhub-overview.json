@@ -2,7 +2,7 @@
   "title": "LocalHub Overview",
   "uid": "localhub-overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
   "time": { "from": "now-15m", "to": "now" },
   "panels": [
@@ -11,6 +11,11 @@
     { "type": "timeseries", "title": "JVM heap", "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 }, "targets": [{ "expr": "sum(jvm_memory_used_bytes{application=\"hmdp\",area=\"heap\"})", "legendFormat": "used" }] },
     { "type": "timeseries", "title": "Seckill acceptance", "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum by (result) (rate(localhub_seckill_accept_total[1m]))", "legendFormat": "{{result}}" }] },
     { "type": "timeseries", "title": "Kafka retry / DLT", "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "sum(rate(localhub_kafka_retry_total[1m]))", "legendFormat": "retry" }, { "expr": "sum(rate(localhub_kafka_dlt_total[1m]))", "legendFormat": "dlt" }] },
-    { "type": "timeseries", "title": "AI latency P95", "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(localhub_ai_chat_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }] }
+    { "type": "timeseries", "title": "AI latency P95", "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }, "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(localhub_ai_chat_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }] },
+    { "type": "stat", "title": "Outbox pending", "gridPos": { "x": 0, "y": 16, "w": 4, "h": 5 }, "targets": [{ "expr": "localhub_outbox_pending", "legendFormat": "events" }] },
+    { "type": "stat", "title": "Oldest outbox age", "gridPos": { "x": 4, "y": 16, "w": 5, "h": 5 }, "fieldConfig": { "defaults": { "unit": "s" } }, "targets": [{ "expr": "localhub_outbox_oldest_age_seconds", "legendFormat": "age" }] },
+    { "type": "stat", "title": "Kafka retry backlog", "gridPos": { "x": 9, "y": 16, "w": 5, "h": 5 }, "targets": [{ "expr": "localhub_kafka_retry_count", "legendFormat": "messages" }] },
+    { "type": "stat", "title": "Compensations", "gridPos": { "x": 14, "y": 16, "w": 5, "h": 5 }, "targets": [{ "expr": "localhub_compensation_count", "legendFormat": "count" }] },
+    { "type": "stat", "title": "Oldest processing age", "gridPos": { "x": 19, "y": 16, "w": 5, "h": 5 }, "fieldConfig": { "defaults": { "unit": "s" } }, "targets": [{ "expr": "localhub_seckill_processing_age_seconds", "legendFormat": "age" }] }
   ]
 }

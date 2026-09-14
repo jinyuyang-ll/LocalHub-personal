@@ -2,6 +2,8 @@ package com.hmdp.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.hutool.json.JSONUtil;
+import com.hmdp.dto.SeckillOrderMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -63,9 +67,12 @@ class SeckillHttpKafkaIntegrationTest {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private StringRedisTemplate redis;
+    @Autowired private KafkaTemplate<String, String> kafkaTemplate;
+    @Value("${localhub.kafka.topics.seckill-orders:localhub.seckill.orders}") private String ordersTopic;
 
     @BeforeEach
     void arrange() {
+        jdbc.update("delete from tb_order_release where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_voucher_order where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_seckill_voucher where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_voucher where id = ?", VOUCHER_ID);
@@ -81,6 +88,7 @@ class SeckillHttpKafkaIntegrationTest {
 
     @AfterEach
     void cleanup() {
+        jdbc.update("delete from tb_order_release where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_voucher_order where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_outbox_event where aggregate_type = 'VoucherOrder'");
         jdbc.update("delete from tb_seckill_voucher where voucher_id = ?", VOUCHER_ID);
@@ -104,6 +112,24 @@ class SeckillHttpKafkaIntegrationTest {
                 "select stock from tb_seckill_voucher where voucher_id = ?", Integer.class, VOUCHER_ID));
         assertEquals("SUCCESS", redis.opsForValue().get("seckill:order:status:" + orderId));
 
+        SeckillOrderMessage duplicate = new SeckillOrderMessage();
+        duplicate.setOrderId(orderId);
+        duplicate.setUserId(USER_ID);
+        duplicate.setVoucherId(VOUCHER_ID);
+        duplicate.setRetryCount(0);
+        String duplicatePayload = JSONUtil.toJsonStr(duplicate);
+        for (int i = 0; i < 10; i++) {
+            kafkaTemplate.send(ordersTopic, String.valueOf(orderId), duplicatePayload).get();
+        }
+        Thread.sleep(2_000);
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_voucher_order where id = ?", Integer.class, orderId));
+        assertEquals(0, jdbc.queryForObject(
+                "select stock from tb_seckill_voucher where voucher_id = ?", Integer.class, VOUCHER_ID));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_outbox_event where aggregate_id = ? and event_type = 'VOUCHER_ORDER_CREATED'",
+                Integer.class, orderId));
+
         mockMvc.perform(post("/api/seckill-vouchers/{voucherId}/orders", VOUCHER_ID)
                         .header("authorization", TOKEN))
                 .andExpect(status().isOk())
@@ -111,6 +137,30 @@ class SeckillHttpKafkaIntegrationTest {
         assertEquals(1, jdbc.queryForObject(
                 "select count(*) from tb_voucher_order where user_id = ? and voucher_id = ?",
                 Integer.class, USER_ID, VOUCHER_ID));
+    }
+
+    @Test
+    void cancelledOrderRestoresDatabaseStockAndRedisQualification() throws Exception {
+        String body = mockMvc.perform(post("/api/seckill-vouchers/{voucherId}/orders", VOUCHER_ID)
+                        .header("authorization", TOKEN))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true))
+                .andReturn().getResponse().getContentAsString();
+        long orderId = objectMapper.readTree(body).path("data").asLong();
+        await(Duration.ofSeconds(20), () -> jdbc.queryForObject(
+                "select count(*) from tb_voucher_order where id = ?", Integer.class, orderId) == 1);
+
+        mockMvc.perform(post("/api/voucher-orders/{orderId}/cancel", orderId)
+                        .header("authorization", TOKEN))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
+
+        await(Duration.ofSeconds(20), () -> jdbc.queryForObject(
+                "select count(*) from tb_order_release where order_id = ? and redis_released = 1",
+                Integer.class, orderId) == 1);
+        assertEquals(1, jdbc.queryForObject(
+                "select stock from tb_seckill_voucher where voucher_id = ?", Integer.class, VOUCHER_ID));
+        assertEquals("1", redis.opsForValue().get("seckill:stock:" + VOUCHER_ID));
+        assertEquals(false, redis.opsForSet().isMember("seckill:order:" + VOUCHER_ID, String.valueOf(USER_ID)));
+        assertEquals("CLOSED", redis.opsForValue().get("seckill:order:status:" + orderId));
     }
 
     private void await(Duration timeout, Condition condition) throws Exception {

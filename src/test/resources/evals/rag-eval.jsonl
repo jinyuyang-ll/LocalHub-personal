@@ -1,0 +1,56 @@
+{"query":"怎么用手机号登录","expectedTitle":"登录"}
+{"query":"验证码登录成功后还保留吗","expectedTitle":"登录"}
+{"query":"退出登录会删除什么","expectedTitle":"登录"}
+{"query":"登录验证码存在哪里","expectedTitle":"登录"}
+{"query":"手机号验证码登录流程","expectedTitle":"登录"}
+{"query":"Redis Token 怎么退出","expectedTitle":"登录"}
+{"query":"验证码验证通过后的处理","expectedTitle":"登录"}
+{"query":"用户认证支持什么方式","expectedTitle":"登录"}
+{"query":"如何按名字找商家","expectedTitle":"店铺搜索"}
+{"query":"附近店铺怎么查","expectedTitle":"店铺搜索"}
+{"query":"商家搜索接口是什么","expectedTitle":"店铺搜索"}
+{"query":"可以根据店铺名称搜索吗","expectedTitle":"店铺搜索"}
+{"query":"附近商户查询地址","expectedTitle":"店铺搜索"}
+{"query":"shops search 怎么调用","expectedTitle":"店铺搜索"}
+{"query":"哪里能搜索门店","expectedTitle":"店铺搜索"}
+{"query":"nearby 店铺功能","expectedTitle":"店铺搜索"}
+{"query":"普通优惠券怎么领取","expectedTitle":"优惠券"}
+{"query":"秒杀券从哪个接口下单","expectedTitle":"优惠券"}
+{"query":"优惠券领取 API","expectedTitle":"优惠券"}
+{"query":"普通券和秒杀券有什么入口","expectedTitle":"优惠券"}
+{"query":"receive voucher 怎么用","expectedTitle":"优惠券"}
+{"query":"抢购优惠券的地址","expectedTitle":"优惠券"}
+{"query":"代金券领取方式","expectedTitle":"优惠券"}
+{"query":"优惠券 voucherId 参数","expectedTitle":"优惠券"}
+{"query":"秒杀下单后为什么只返回订单号","expectedTitle":"秒杀订单"}
+{"query":"如何查询秒杀订单状态","expectedTitle":"秒杀订单"}
+{"query":"PROCESSING 状态是什么意思","expectedTitle":"秒杀订单"}
+{"query":"异步订单什么时候成功","expectedTitle":"秒杀订单"}
+{"query":"秒杀订单失败状态有哪些","expectedTitle":"秒杀订单"}
+{"query":"订单状态查询 API","expectedTitle":"秒杀订单"}
+{"query":"DUPLICATE 秒杀订单","expectedTitle":"秒杀订单"}
+{"query":"抢购后怎么知道创建成功","expectedTitle":"秒杀订单"}
+{"query":"未支付订单多久自动关闭","expectedTitle":"支付和关单"}
+{"query":"订单状态 1 和 2 表示什么","expectedTitle":"支付和关单"}
+{"query":"怎么支付订单","expectedTitle":"支付和关单"}
+{"query":"取消订单后是什么状态","expectedTitle":"支付和关单"}
+{"query":"系统会自动关单吗","expectedTitle":"支付和关单"}
+{"query":"超时未支付如何处理","expectedTitle":"支付和关单"}
+{"query":"支付成功状态码","expectedTitle":"支付和关单"}
+{"query":"订单关闭和取消","expectedTitle":"支付和关单"}
+{"query":"如何创建到店预约","expectedTitle":"预约"}
+{"query":"在哪里查询我的预约","expectedTitle":"预约"}
+{"query":"预约怎么取消","expectedTitle":"预约"}
+{"query":"reservations API 有哪些","expectedTitle":"预约"}
+{"query":"查看本人预约记录","expectedTitle":"预约"}
+{"query":"商家预约入口","expectedTitle":"预约"}
+{"query":"预约时间如何提交","expectedTitle":"预约"}
+{"query":"取消到店预订","expectedTitle":"预约"}
+{"query":"哪些接口做了限流","expectedTitle":"限流"}
+{"query":"秒杀防刷如何实现","expectedTitle":"限流"}
+{"query":"滑动窗口限流用什么实现","expectedTitle":"限流"}
+{"query":"Redis ZSet Lua AOP 限流","expectedTitle":"限流"}
+{"query":"AI 客服有频率限制吗","expectedTitle":"限流"}
+{"query":"验证码接口怎么防刷","expectedTitle":"限流"}
+{"query":"预约接口限流方案","expectedTitle":"限流"}
+{"query":"请求过多如何控制","expectedTitle":"限流"}
