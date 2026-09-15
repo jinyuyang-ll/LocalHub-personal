@@ -2,12 +2,15 @@ package com.hmdp.service.impl;
 
 import com.hmdp.entity.OutboxEvent;
 import com.hmdp.config.LocalHubMetrics;
+import com.hmdp.dto.EventEnvelope;
 import com.hmdp.service.IOutboxEventService;
+import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -21,6 +24,12 @@ public class KafkaOutboxDispatcher {
 
     private final String workerId = UUID.randomUUID().toString();
 
+    @Value("${localhub.outbox.batch-size:10}")
+    private int batchSize = 10;
+
+    @Value("${localhub.outbox.lease-seconds:120}")
+    private long leaseSeconds = 120;
+
     @Resource
     private IOutboxEventService outboxEventService;
 
@@ -33,24 +42,39 @@ public class KafkaOutboxDispatcher {
     public void dispatch() {
         metrics.setGauge("outbox.pending", outboxEventService.pendingCount());
         metrics.setGauge("outbox.oldest.age.seconds", outboxEventService.oldestPendingAgeSeconds());
-        List<OutboxEvent> events = outboxEventService.claimPendingEvents(50, workerId,
-                LocalDateTime.now().plusSeconds(30));
+        String claimOwner = workerId + ":" + UUID.randomUUID();
+        List<OutboxEvent> events = outboxEventService.claimPendingEvents(
+                Math.max(1, Math.min(batchSize, 20)), claimOwner,
+                LocalDateTime.now().plusSeconds(Math.max(30, leaseSeconds)));
         for (OutboxEvent event : events) {
             try {
                 kafkaTemplate.send(
                         event.getTopic(),
                         event.getEventId(),
-                        event.getPayload()
+                        envelope(event)
                 ).get(10, java.util.concurrent.TimeUnit.SECONDS);
-                outboxEventService.markSent(event.getId(), workerId);
+                outboxEventService.markSent(event.getId(), claimOwner);
                 metrics.increment("outbox.dispatch", "success");
                 log.info("Outbox event dispatched. id={}, topic={}, type={}",
                         event.getId(), event.getTopic(), event.getEventType());
             } catch (Exception e) {
-                outboxEventService.markFailed(event.getId(), workerId, e.getMessage());
+                outboxEventService.markFailed(event.getId(), claimOwner, e.getMessage());
                 metrics.increment("outbox.dispatch", "failed");
                 log.warn("Outbox event dispatch failed. id={}, topic={}", event.getId(), event.getTopic(), e);
             }
         }
+    }
+
+    private String envelope(OutboxEvent event) {
+        Object data;
+        try {
+            data = JSONUtil.parse(event.getPayload());
+        } catch (RuntimeException invalidJson) {
+            data = event.getPayload();
+        }
+        EventEnvelope envelope = new EventEnvelope(event.getEventId(), event.getEventType(),
+                event.getAggregateId(), event.getCreateTime() == null
+                ? LocalDateTime.now().toString() : event.getCreateTime().toString(), data);
+        return JSONUtil.toJsonStr(envelope);
     }
 }

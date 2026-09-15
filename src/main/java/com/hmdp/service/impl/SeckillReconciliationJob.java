@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
 
@@ -36,12 +35,12 @@ public class SeckillReconciliationJob {
         RLock lock = redissonClient.getLock(SECKILL_RECONCILE_JOB_LOCK_KEY);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(0, 55, TimeUnit.SECONDS);
+            // Let the Redisson watchdog renew this lock for the entire reconciliation.
+            // A fixed lease could expire while Redis/MySQL is degraded and allow overlap.
+            acquired = lock.tryLock();
             if (!acquired) return;
             reconcileReservations();
             orderReleaseService.retryPendingRedisReleases(100);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
         } catch (RuntimeException error) {
             log.error("Seckill reconciliation failed", error);
             metrics.increment("seckill.reconciliation", "failed");

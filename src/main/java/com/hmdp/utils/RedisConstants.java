@@ -32,6 +32,7 @@ public class RedisConstants {
     public static final String SECKILL_PUBLISH_PAYLOAD_HASH = "seckill:kafka:publish:payload";
     public static final String SECKILL_PUBLISH_RETRY_ZSET = "seckill:kafka:publish:retry";
     public static final String SECKILL_PUBLISH_PROCESSING_ZSET = "seckill:kafka:publish:processing";
+    public static final String SECKILL_PUBLISH_CLAIM_HASH = "seckill:kafka:publish:claim";
     public static final String SECKILL_RESERVATION_AUDIT_ZSET = "seckill:reservation:audit";
     public static final String SECKILL_RESERVATION_AUDIT_HASH = "seckill:reservation:audit:payload";
     public static final String ORDER_LOCK_KEY = "lock:order:";

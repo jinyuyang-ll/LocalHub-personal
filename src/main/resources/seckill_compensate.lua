@@ -9,6 +9,11 @@ local userId = ARGV[2]
 local statusTtlSeconds = ARGV[3]
 local finalStatus = ARGV[4]
 local preserveUserMarker = ARGV[5]
+local claimToken = ARGV[7] or ''
+
+if claimToken ~= '' and redis.call('hget', KEYS[7], ARGV[6]) ~= claimToken then
+    return -1
+end
 
 if redis.call('get', reservationKey) ~= expected then
     return 0
@@ -24,4 +29,10 @@ else
 end
 redis.call('incrby', stockKey, 1)
 redis.call('set', statusKey, finalStatus, 'EX', statusTtlSeconds)
+if claimToken ~= '' then
+    redis.call('hdel', KEYS[7], ARGV[6])
+    redis.call('zrem', KEYS[8], ARGV[6])
+    redis.call('hdel', KEYS[9], ARGV[6])
+    redis.call('zrem', KEYS[10], ARGV[6])
+end
 return 1

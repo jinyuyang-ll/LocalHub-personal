@@ -31,25 +31,37 @@ public class SeckillRollbackService {
     @Resource private LocalHubMetrics metrics;
 
     public boolean rollback(SeckillOrderMessage message, String reason) {
-        return rollback(message, reason, SeckillOrderState.FAILED, false);
+        return rollback(message, reason, SeckillOrderState.FAILED, false, "");
+    }
+
+    public boolean rollbackClaim(SeckillOrderMessage message, String reason, String claimToken) {
+        return rollback(message, reason, SeckillOrderState.FAILED, false, claimToken);
     }
 
     public boolean rollback(SeckillOrderMessage message, String reason, SeckillOrderState finalState,
                             boolean preserveUserMarker) {
+        return rollback(message, reason, finalState, preserveUserMarker, "");
+    }
+
+    private boolean rollback(SeckillOrderMessage message, String reason, SeckillOrderState finalState,
+                             boolean preserveUserMarker, String claimToken) {
         if (!valid(message)) return false;
         Long result = redis.execute(ROLLBACK_SCRIPT, Arrays.asList(
                         SECKILL_RESERVATION_KEY + message.getOrderId(),
                         SECKILL_ORDER_KEY + message.getVoucherId(),
                         SECKILL_STOCK_KEY + message.getVoucherId(),
                         SECKILL_ORDER_STATUS_KEY + message.getOrderId(),
-                        SECKILL_RESERVATION_AUDIT_ZSET, SECKILL_RESERVATION_AUDIT_HASH),
+                        SECKILL_RESERVATION_AUDIT_ZSET, SECKILL_RESERVATION_AUDIT_HASH,
+                        SECKILL_PUBLISH_CLAIM_HASH, SECKILL_PUBLISH_PROCESSING_ZSET,
+                        SECKILL_PUBLISH_PAYLOAD_HASH, SECKILL_PUBLISH_RETRY_ZSET),
                 message.getVoucherId() + ":" + message.getUserId(),
                 String.valueOf(message.getUserId()), String.valueOf(finalState.getTtlSeconds()), finalState.name(),
-                preserveUserMarker ? "1" : "0", String.valueOf(message.getOrderId()));
+                preserveUserMarker ? "1" : "0", String.valueOf(message.getOrderId()), claimToken);
         boolean restored = result != null && result == 1L;
         if (restored) orderStatusService.recordFailure(message.getOrderId(), reason);
         if (restored) metrics.incrementGauge("compensation.count");
-        metrics.increment("seckill.rollback", restored ? "restored" : "idempotent_skip");
+        metrics.increment("seckill.rollback", restored ? "restored"
+                : result != null && result == -1L ? "stale_claim_skip" : "idempotent_skip");
         log.warn("Seckill rollback. orderId={}, restored={}, state={}, reason={}",
                 message.getOrderId(), restored, finalState, reason);
         return restored;

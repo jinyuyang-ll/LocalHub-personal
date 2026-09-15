@@ -30,8 +30,7 @@ import java.util.UUID;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers(disabledWithoutDocker = true)
 class InfrastructureIntegrationTest {
@@ -159,7 +158,7 @@ class InfrastructureIntegrationTest {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     @Test
-    void kafkaPublishRecoveryClaimIsAtomicAndLeaseCanExpire() {
+    void kafkaPublishRecoveryClaimUsesTokenAndRejectsStaleAck() {
         LettuceConnectionFactory factory = new LettuceConnectionFactory(
                 new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)));
         factory.afterPropertiesSet();
@@ -167,20 +166,82 @@ class InfrastructureIntegrationTest {
         redis.afterPropertiesSet();
         String retry = "it:retry";
         String processing = "it:processing";
+        String claims = "it:claims";
+        String payloads = "it:payloads";
         redis.opsForZSet().add(retry, "1001", 1);
         redis.opsForZSet().add(retry, "1002", 1);
+        redis.opsForHash().put(payloads, "1001", "payload-1");
+        redis.opsForHash().put(payloads, "1002", "payload-2");
         DefaultRedisScript<List> claim = new DefaultRedisScript<>();
         claim.setLocation(new ClassPathResource("seckill_retry_claim.lua"));
         claim.setResultType(List.class);
+        DefaultRedisScript<Long> ack = new DefaultRedisScript<>();
+        ack.setLocation(new ClassPathResource("seckill_retry_ack.lua"));
+        ack.setResultType(Long.class);
+        DefaultRedisScript<Long> requeue = new DefaultRedisScript<>();
+        requeue.setLocation(new ClassPathResource("seckill_retry_requeue.lua"));
+        requeue.setResultType(Long.class);
 
-        List first = redis.execute(claim, java.util.Arrays.asList(retry, processing), "10", "100", "10", "worker-a");
-        List second = redis.execute(claim, java.util.Arrays.asList(retry, processing), "10", "100", "10", "worker-b");
-        assertEquals(2, first.size());
+        List first = redis.execute(claim, java.util.Arrays.asList(retry, processing, claims),
+                "10", "100", "10", "worker-a:claim-1");
+        List second = redis.execute(claim, java.util.Arrays.asList(retry, processing, claims),
+                "10", "100", "10", "worker-b:claim-1");
+        assertEquals(4, first.size());
         assertTrue(second.isEmpty(), "a claimed message must not be claimed by another instance");
 
-        List reclaimed = redis.execute(claim, java.util.Arrays.asList(retry, processing), "101", "200", "10", "worker-b");
-        assertEquals(2, reclaimed.size(), "expired leases must be requeued and claimable");
-        redis.delete(java.util.Arrays.asList(retry, processing));
+        String orderId = String.valueOf(first.get(0));
+        String staleToken = String.valueOf(first.get(1));
+        List reclaimed = redis.execute(claim, java.util.Arrays.asList(retry, processing, claims),
+                "101", "200", "10", "worker-b:claim-2");
+        assertEquals(4, reclaimed.size(), "expired leases must be requeued and claimable");
+        String currentToken = null;
+        for (int i = 0; i < reclaimed.size(); i += 2) {
+            if (orderId.equals(String.valueOf(reclaimed.get(i)))) currentToken = String.valueOf(reclaimed.get(i + 1));
+        }
+        assertNotNull(currentToken);
+        assertNotEquals(staleToken, currentToken);
+        assertEquals(0L, redis.execute(ack, java.util.Arrays.asList(payloads, retry, processing, claims),
+                orderId, staleToken), "an expired worker must not ACK the new owner's claim");
+        assertEquals(0L, redis.execute(requeue, java.util.Arrays.asList(payloads, retry, processing, claims),
+                orderId, "stale-payload", "300", staleToken),
+                "an expired worker must not requeue the new owner's claim");
+        assertNotEquals("stale-payload", redis.opsForHash().get(payloads, orderId));
+        assertEquals(currentToken, redis.opsForHash().get(claims, orderId));
+        assertEquals(1L, redis.execute(ack, java.util.Arrays.asList(payloads, retry, processing, claims),
+                orderId, currentToken));
+        redis.delete(java.util.Arrays.asList(retry, processing, claims, payloads));
+        factory.destroy();
+    }
+
+    @Test
+    void staleRecoveryClaimCannotCompensateNewOwnerReservation() {
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(
+                new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)));
+        factory.afterPropertiesSet();
+        StringRedisTemplate redis = new StringRedisTemplate(factory);
+        redis.afterPropertiesSet();
+        String orderId = "2001";
+        redis.opsForValue().set("it:reservation:" + orderId, "91:8");
+        redis.opsForValue().set("it:stock:91", "0");
+        redis.opsForSet().add("it:orders:91", "8");
+        redis.opsForHash().put("it:claims", orderId, "worker-b:new-token");
+        redis.opsForZSet().add("it:processing", orderId, 500);
+        redis.opsForHash().put("it:payloads", orderId, "payload");
+        DefaultRedisScript<Long> compensate = new DefaultRedisScript<>();
+        compensate.setLocation(new ClassPathResource("seckill_compensate.lua"));
+        compensate.setResultType(Long.class);
+        List<String> keys = java.util.Arrays.asList("it:reservation:" + orderId, "it:orders:91",
+                "it:stock:91", "it:status:" + orderId, "it:audit", "it:audit-payload",
+                "it:claims", "it:processing", "it:payloads", "it:retry");
+
+        assertEquals(-1L, redis.execute(compensate, keys,
+                "91:8", "8", "1800", "FAILED", "0", orderId, "worker-a:expired-token"));
+        assertEquals("0", redis.opsForValue().get("it:stock:91"));
+        assertEquals(1L, redis.execute(compensate, keys,
+                "91:8", "8", "1800", "FAILED", "0", orderId, "worker-b:new-token"));
+        assertEquals("1", redis.opsForValue().get("it:stock:91"));
+        assertFalse(redis.opsForHash().hasKey("it:claims", orderId));
+        redis.delete(keys);
         factory.destroy();
     }
 }

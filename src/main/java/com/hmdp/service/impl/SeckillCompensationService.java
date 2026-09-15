@@ -15,6 +15,10 @@ public class SeckillCompensationService {
         return rollbackService.rollback(message, reason);
     }
 
+    public boolean compensateFailureClaim(SeckillOrderMessage message, String reason, String claimToken) {
+        return rollbackService.rollbackClaim(message, reason, claimToken);
+    }
+
     public boolean compensateDuplicate(SeckillOrderMessage message, String reason) {
         return rollbackService.rollback(message, reason, SeckillOrderState.DUPLICATE, true);
     }

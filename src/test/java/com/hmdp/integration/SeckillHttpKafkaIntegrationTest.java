@@ -72,6 +72,7 @@ class SeckillHttpKafkaIntegrationTest {
 
     @BeforeEach
     void arrange() {
+        jdbc.update("delete from tb_consumer_message where consumer_name = 'order-release'");
         jdbc.update("delete from tb_order_release where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_voucher_order where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_seckill_voucher where voucher_id = ?", VOUCHER_ID);
@@ -88,6 +89,7 @@ class SeckillHttpKafkaIntegrationTest {
 
     @AfterEach
     void cleanup() {
+        jdbc.update("delete from tb_consumer_message where consumer_name = 'order-release'");
         jdbc.update("delete from tb_order_release where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_voucher_order where voucher_id = ?", VOUCHER_ID);
         jdbc.update("delete from tb_outbox_event where aggregate_type = 'VoucherOrder'");
@@ -161,6 +163,10 @@ class SeckillHttpKafkaIntegrationTest {
         assertEquals("1", redis.opsForValue().get("seckill:stock:" + VOUCHER_ID));
         assertEquals(false, redis.opsForSet().isMember("seckill:order:" + VOUCHER_ID, String.valueOf(USER_ID)));
         assertEquals("CLOSED", redis.opsForValue().get("seckill:order:status:" + orderId));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_consumer_message where consumer_name = 'order-release' " +
+                        "and event_type in ('VOUCHER_ORDER_CANCELLED','VOUCHER_ORDER_CLOSED')",
+                Integer.class));
     }
 
     private void await(Duration timeout, Condition condition) throws Exception {

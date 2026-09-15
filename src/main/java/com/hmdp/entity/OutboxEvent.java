@@ -34,7 +34,7 @@ public class OutboxEvent implements Serializable {
     private String payload;
 
     /**
-     * 0 NEW, 1 SENT, 2 FAILED
+     * 0 NEW, 1 SENT, 2 FAILED, 3 PROCESSING
      */
     private Integer status;
 

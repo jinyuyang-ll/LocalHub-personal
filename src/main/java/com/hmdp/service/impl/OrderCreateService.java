@@ -43,7 +43,9 @@ public class OrderCreateService {
             afterCommit(order.getId());
             return;
         }
-        RLock lock = redissonClient.getLock(ORDER_LOCK_KEY + order.getUserId());
+        // The contention boundary is one user buying one voucher. The Redis lock
+        // reduces duplicate work; uk_user_voucher remains the final correctness guard.
+        RLock lock = redissonClient.getLock(ORDER_LOCK_KEY + order.getUserId() + ":" + order.getVoucherId());
         if (!lock.tryLock()) throw new BusinessException(ErrorCode.RETRYABLE_ERROR, "订单创建锁繁忙");
         try {
             if (orderMapper.selectById(order.getId()) != null) {

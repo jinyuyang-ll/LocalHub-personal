@@ -269,7 +269,7 @@ CREATE TABLE `tb_outbox_event`  (
   `event_type` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'event type',
   `topic` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'target topic',
   `payload` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'event payload',
-  `status` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0 NEW, 1 SENT, 2 FAILED',
+  `status` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0 NEW, 1 SENT, 2 FAILED, 3 PROCESSING',
   `retry_count` int(11) NOT NULL DEFAULT 0 COMMENT 'retry count',
   `next_retry_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'next retry time',
   `last_error` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'last error',
@@ -287,6 +287,18 @@ CREATE TABLE `tb_outbox_event`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
 DROP TABLE IF EXISTS `tb_voucher_order`;
+DROP TABLE IF EXISTS `tb_consumer_message`;
+CREATE TABLE `tb_consumer_message` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `consumer_name` varchar(64) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+  `event_id` varchar(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+  `event_type` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `consumed_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_consumer_event` (`consumer_name`, `event_id`),
+  KEY `idx_consumer_message_time` (`consumed_time`)
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
 CREATE TABLE `tb_voucher_order`  (
   `id` bigint(20) NOT NULL COMMENT '主键',
   `user_id` bigint(20) UNSIGNED NOT NULL COMMENT '下单的用户id',
