@@ -22,7 +22,11 @@ import java.util.UUID;
 @ConditionalOnProperty(prefix = "localhub.kafka", name = "enabled", havingValue = "true")
 public class KafkaOutboxDispatcher {
 
-    private final String workerId = UUID.randomUUID().toString();
+    /**
+     * tb_outbox_event.locked_by is varchar(64). Keep a short process prefix for
+     * diagnostics and append a fresh compact UUID for fencing each claim batch.
+     */
+    private final String workerId = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
     @Value("${localhub.outbox.batch-size:10}")
     private int batchSize = 10;
@@ -42,7 +46,7 @@ public class KafkaOutboxDispatcher {
     public void dispatch() {
         metrics.setGauge("outbox.pending", outboxEventService.pendingCount());
         metrics.setGauge("outbox.oldest.age.seconds", outboxEventService.oldestPendingAgeSeconds());
-        String claimOwner = workerId + ":" + UUID.randomUUID();
+        String claimOwner = workerId + ":" + UUID.randomUUID().toString().replace("-", "");
         List<OutboxEvent> events = outboxEventService.claimPendingEvents(
                 Math.max(1, Math.min(batchSize, 20)), claimOwner,
                 LocalDateTime.now().plusSeconds(Math.max(30, leaseSeconds)));

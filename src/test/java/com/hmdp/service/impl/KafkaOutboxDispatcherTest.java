@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -44,6 +45,11 @@ class KafkaOutboxDispatcherTest {
 
         org.mockito.ArgumentCaptor<String> payload = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(kafka).send(eq("orders"), eq("event-1"), payload.capture());
+        org.mockito.ArgumentCaptor<String> claimOwner = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(outbox).claimPendingEvents(eq(10), claimOwner.capture(), any());
+        assertTrue(claimOwner.getValue().length() <= 64,
+                "claim owner must fit tb_outbox_event.locked_by varchar(64)");
+        verify(outbox).markSent(1L, claimOwner.getValue());
         JSONObject envelope = JSONUtil.parseObj(payload.getValue());
         assertEquals("event-1", envelope.getStr("eventId"));
         assertEquals("VOUCHER_ORDER_CANCELLED", envelope.getStr("eventType"));
