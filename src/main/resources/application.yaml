@@ -1,8 +1,10 @@
 server:
   port: 8081
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   application:
-    name: hmdp
+    name: localhub
   datasource:
     driver-class-name: com.mysql.jdbc.Driver
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf8}
@@ -23,22 +25,30 @@ spring:
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
     producer:
+      acks: all
+      retries: 10
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        request.timeout.ms: 30000
     consumer:
-      group-id: localhub-hmdp
+      group-id: localhub
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       auto-offset-reset: earliest
 mybatis-plus:
   type-aliases-package: com.hmdp.entity # 别名扫描包
 logging:
-  level:
-    com.hmdp: debug
   pattern:
     dateformat: mm:ss.SSS
     console: "%d{mm:ss.SSS} %-5level [%X{traceId}] %logger{36} - %msg%n"
 localhub:
+  outbox:
+    batch-size: 10
+    lease-seconds: 120
   kafka:
     enabled: false
     topics:
@@ -61,7 +71,8 @@ localhub:
     publish-retry:
       max-attempts: 5
       interval-ms: 5000
-      lease-ms: 30000
+      lease-ms: 60000
+      batch-size: 10
     reconciliation:
       interval-ms: 60000
       stale-seconds: 300
@@ -81,6 +92,9 @@ localhub:
       min-score: 0.25
       candidate-limit: 12
       vector-weight: 0.65
+  http:
+    # Empty means forwarded headers are ignored. Configure only controlled proxy IPs/CIDRs/hosts.
+    trusted-proxies: ${LOCALHUB_TRUSTED_PROXIES:}
 management:
   endpoints:
     web:

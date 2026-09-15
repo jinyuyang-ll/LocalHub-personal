@@ -1,0 +1,17 @@
+logging:
+  level:
+    root: info
+    com.hmdp: info
+    org.apache.kafka: warn
+    org.springframework.data.redis: warn
+
+localhub:
+  kafka:
+    enabled: ${LOCALHUB_KAFKA_ENABLED:true}
+  seckill:
+    queue: ${LOCALHUB_SECKILL_QUEUE:kafka}
+  canal:
+    enabled: ${LOCALHUB_CANAL_ENABLED:false}
+  ai:
+    enabled: ${LOCALHUB_AI_ENABLED:false}
+    api-key: ${LOCALHUB_AI_API_KEY:}

@@ -1,6 +1,7 @@
 package com.hmdp.exception;
 
 public enum ErrorCode {
+    RATE_LIMITED("RATE_LIMITED", "请求过于频繁，请稍后再试"),
     INVALID_PARAMETER("INVALID_PARAMETER", "请求参数不正确"),
     STOCK_EMPTY("STOCK_EMPTY", "库存不足"),
     ORDER_EXIST("ORDER_EXIST", "不能重复下单"),

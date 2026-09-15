@@ -41,7 +41,7 @@ public class KafkaSeckillOrderConsumer {
 
     @KafkaListener(
             topics = "${localhub.kafka.topics.seckill-orders:localhub.seckill.orders}",
-            groupId = "${spring.kafka.consumer.group-id:localhub-hmdp}",
+            groupId = "${spring.kafka.consumer.group-id:localhub}",
             autoStartup = "${localhub.kafka.enabled:false}"
     )
     public void consume(String payload) {
@@ -50,7 +50,7 @@ public class KafkaSeckillOrderConsumer {
 
     @KafkaListener(
             topics = "${localhub.kafka.topics.seckill-orders-retry:localhub.seckill.orders.retry}",
-            groupId = "${spring.kafka.consumer.group-id:localhub-hmdp}-retry",
+            groupId = "${spring.kafka.consumer.group-id:localhub}-retry",
             autoStartup = "${localhub.kafka.enabled:false}"
     )
     public void consumeRetry(String payload) {

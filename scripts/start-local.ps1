@@ -27,7 +27,7 @@ $env:LOCALHUB_SECKILL_QUEUE = 'kafka'
 $env:LOCALHUB_CANAL_ENABLED = 'false'
 $env:LOCALHUB_AI_ENABLED = 'false'
 
-Start-Process -FilePath $java -ArgumentList '-jar','target\hm-dianping-0.0.1-SNAPSHOT.jar' `
+Start-Process -FilePath $java -ArgumentList '-jar','target\localhub-0.0.1-SNAPSHOT.jar' `
     -WorkingDirectory $root -RedirectStandardOutput 'target\backend-runtime.log' `
     -RedirectStandardError 'target\backend-runtime.err.log' -WindowStyle Hidden
 Start-Process -FilePath 'C:\Windows\System32\cmd.exe' -ArgumentList '/c',"`"$npm`" run dev" `

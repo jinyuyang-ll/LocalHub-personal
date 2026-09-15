@@ -35,16 +35,47 @@ sequenceDiagram
   R-->>U: 立即返回 orderId
   R-)K: 异步发送（不等待 ACK）
   alt 发送失败
-    K-->>R: Lua claim 的延迟重试队列
+    K-->>R: Lua claimToken + lease 的延迟重试队列
   end
   K->>C: 至少一次投递
   C->>D: 库存-1 + 订单 + Outbox（同事务）
   D-->>C: PK/(user,voucher) 幂等
   O->>D: SKIP LOCKED + lease 抢占
-  O->>K: 发布领域事件
-  K->>D: 取消/关单幂等库存恢复
+  O->>K: 发布 Event Envelope
+  K->>D: eventId 去重 + 取消/关单幂等库存恢复
   K->>R: Lua 恢复资格和库存
 ```
+
+## 两套订单状态的边界
+
+技术处理状态与业务订单状态描述的是不同事实，不能合并为一个枚举：
+
+```mermaid
+stateDiagram-v2
+  state "Redis 技术处理状态" as RedisState {
+    [*] --> PENDING
+    PENDING --> PROCESSING: Lua 预扣成功
+    PROCESSING --> SUCCESS: MySQL 订单事务提交
+    PROCESSING --> FAILED: 投递/建单重试耗尽并补偿
+    SUCCESS --> CLOSED: 未支付取消或超时关单
+  }
+  state "MySQL 业务订单状态" as DbState {
+    [*] --> UNPAID: 创建订单
+    UNPAID --> PAID: 支付 CAS 成功
+    UNPAID --> CANCELLED: 用户取消/超时关单 CAS 成功
+  }
+```
+
+| 时间点 | `SeckillOrderState`（Redis） | `OrderStatus`（MySQL） |
+|---|---|---|
+| Lua 接受请求 | `PROCESSING` | 尚无订单 |
+| 建单事务提交 | `SUCCESS` | `UNPAID` |
+| 支付完成 | `SUCCESS` | `PAID` |
+| 取消/超时并发出 Outbox | `CLOSED` | `CANCELLED` |
+| 投递或建单永久失败 | `FAILED` | 尚无订单，Redis 预扣已补偿 |
+
+Redis 状态用于轮询异步处理进度并带 TTL；MySQL 状态是订单业务事实源。数据库 PK 与
+`(user_id, voucher_id)` 唯一键始终是最终幂等防线。
 
 ## AI Agent 与 RAG
 

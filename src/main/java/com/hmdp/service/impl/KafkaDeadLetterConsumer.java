@@ -23,7 +23,7 @@ public class KafkaDeadLetterConsumer {
 
     @KafkaListener(
             topics = "${localhub.kafka.topics.seckill-orders-dlt:localhub.seckill.orders.dlt}",
-            groupId = "${spring.kafka.consumer.group-id:localhub-hmdp}-dlt",
+            groupId = "${spring.kafka.consumer.group-id:localhub}-dlt",
             autoStartup = "${localhub.kafka.enabled:false}"
     )
     public void consume(String payload) {

@@ -26,7 +26,7 @@ import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
 
 @SpringBootTest
 @Disabled("Manual data preparation and local benchmark; automated infrastructure tests use Testcontainers")
-class HmDianPingApplicationTests {
+class LocalHubApplicationTests {
 
     @Resource
     private CacheClient cacheClient;

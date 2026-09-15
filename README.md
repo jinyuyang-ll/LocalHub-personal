@@ -49,20 +49,24 @@ docker compose up --build -d
 | `LOCALHUB_AI_EMBEDDING_BASE_URL` | DashScope compatible endpoint | 向量模型服务地址，可与对话模型不同 |
 | `LOCALHUB_AI_EMBEDDING_DIMENSIONS` | `1024` | 向量维度，须与百炼模型配置一致 |
 | `LOCALHUB_CANAL_ENABLED` | `false` | 是否启用 Canal 消费器 |
+| `SPRING_PROFILES_ACTIVE` | `dev`（Compose 为 `prod`） | 开发/生产日志与组件开关配置 |
+| `LOCALHUB_TRUSTED_PROXIES` | 空 | 可被信任的反向代理 IP、CIDR 或主机名；空值时忽略转发头 |
+
+生产环境只应把 Nginx/Ingress 加入 `LOCALHUB_TRUSTED_PROXIES`，并由代理覆盖而非追加客户端传入的 `X-Forwarded-For`。服务直连时后端始终使用 `remoteAddr`，限流返回 HTTP `429 Too Many Requests`。
 
 真实 AI 示例：编辑 `.env`，设置 `LOCALHUB_AI_ENABLED=true` 和 `LOCALHUB_AI_API_KEY`，然后重新运行 `docker compose up --build -d`。子业务空间或非北京地域应同时填写该空间对应的对话与 Embedding Base URL。
 
-已有旧数据库的用户应先备份，再按顺序各执行一次 `upgrade-outbox-v2.sql`、`upgrade-outbox-v3.sql` 和 `upgrade-order-release-v1.sql`；全新 Docker 数据卷会直接使用最新版 `hmdp.sql`，无需执行升级脚本。
+已有旧数据库的用户应先备份，再按顺序各执行一次 `upgrade-outbox-v2.sql`、`upgrade-outbox-v3.sql`、`upgrade-order-release-v1.sql` 和 `upgrade-consumer-message-v1.sql`；全新 Docker 数据卷会直接使用最新版 `hmdp.sql`，无需执行升级脚本。
 
 ## 核心实现
 
 - Redisson 复用 `spring.redis.*` 配置，容器内连接 Compose 服务名 `redis`，不再硬编码本机地址。
 - 首页商家搜索使用 Caffeine + Redis 两级缓存；店铺更新时清理本地缓存并递增 Redis 查询版本，避免通配符删除。
-- 订单域拆分为秒杀入口、消息消费、事务建单、状态、支付、取消、关单与补偿组件；HTTP 线程在 Lua 成功后立即返回，不等待 Kafka ACK。异步发送失败写入 Redis 延迟重试集合，Recovery 通过 Lua 完成 `claim → publish → ack/requeue`，多实例不会同时领取同一任务。
+- 订单域拆分为秒杀入口、消息消费、事务建单、状态、支付、取消、关单与补偿组件；HTTP 线程在 Lua 成功后立即返回，不等待 Kafka ACK。异步发送失败写入 Redis 延迟重试集合，Recovery 使用 10 条小批量、有界线程池及 Lua `claimToken` 完成 `claim → publish → token 校验 ack/requeue`；过期 worker 无法删除新 worker 重领的任务。
 - 秒杀状态采用 `PENDING → PROCESSING → SUCCESS / FAILED / CLOSED` 生命周期；成功保留 24 小时，失败及原因保留 7 天。
-- Outbox 使用全局 `event_id`、聚合 ID、乐观锁版本与发送时间；Relay 使用 MySQL `FOR UPDATE SKIP LOCKED` 和 `locked_by/locked_until` 租约先抢占再投递。发送后未 ACK 时租约到期可重领，下游以事件/订单业务键幂等。
+- Outbox 使用全局 `event_id`、聚合 ID、乐观锁版本与发送时间；Relay 使用 MySQL `FOR UPDATE SKIP LOCKED` 和 `locked_by/locked_until` 租约先抢占再投递。消息统一封装为 `eventId/eventType/aggregateId/occurredAt/data`，消费者在同一事务内写入 `tb_consumer_message`，形成通用 eventId 幂等门闩。
 - 取消和超时关单通过 Outbox 驱动 `OrderEventConsumer`，`tb_order_release` 唯一订单记录保证 MySQL 只恢复一次库存，Lua 的 `SREM` 结果保证 Redis 只恢复一次资格和库存；未完成的 Redis 恢复由对账任务继续处理。
-- reservation 不再只依赖 TTL：Lua 同时写入审计 ZSet 和无 TTL 载荷 Hash；对账任务发现长期 `PROCESSING` 且无 MySQL 订单时会幂等重投，重试耗尽后才补偿。超时关单任务使用 Redisson 锁避免多实例重复扫描。
+- reservation 不再只依赖 TTL：Lua 同时写入审计 ZSet 和无 TTL 载荷 Hash；对账任务发现长期 `PROCESSING` 且无 MySQL 订单时会幂等重投，重试耗尽后才补偿。对账和超时关单锁使用 Redisson watchdog 自动续期，慢任务不会因固定 lease 到期而与其他实例重叠。
 - AI 客服通过 LangChain4j `AiServices` 和 `@Tool` 使用真实模型 Function Calling；查询工具只读，预约采用 `PREVIEWED → CONFIRMING → CONFIRMED / CANCELLED` 状态机、当前轮次显式确认、分布式互斥和结果幂等。
 - FAQ 按标题和段落切块，使用百炼 Embedding 与进程内向量索引、关键词召回、Query Rewrite、加权混合召回和二阶段重排；低于阈值时拒答。项目不宣称使用 Milvus/FAISS，模型不可用时仅降级到关键词检索，不生成伪向量。
 - AI Agent Workflow 显式编排 Planner → LangChain4j Tool Executor → Redis Conversation Memory → Guarded Response，工具层再次校验登录用户、资源归属和写操作确认。

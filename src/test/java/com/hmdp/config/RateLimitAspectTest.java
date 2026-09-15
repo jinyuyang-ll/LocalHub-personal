@@ -2,7 +2,7 @@ package com.hmdp.config;
 
 import com.hmdp.annotation.RateLimit;
 import com.hmdp.annotation.RateLimitType;
-import com.hmdp.dto.Result;
+import com.hmdp.exception.RateLimitExceededException;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,9 +22,7 @@ class RateLimitAspectTest {
         when(limit.key()).thenReturn("test"); when(limit.limit()).thenReturn(1);
         when(limit.windowSeconds()).thenReturn(60); when(limit.type()).thenReturn(RateLimitType.GLOBAL);
         ProceedingJoinPoint point = mock(ProceedingJoinPoint.class);
-        Object response = aspect.around(point, limit);
-        assertTrue(response instanceof Result);
-        assertFalse(((Result) response).getSuccess());
+        assertThrows(RateLimitExceededException.class, () -> aspect.around(point, limit));
         verifyNoInteractions(point);
     }
 }

@@ -2,8 +2,8 @@ package com.hmdp.config;
 
 import com.hmdp.annotation.RateLimit;
 import com.hmdp.annotation.RateLimitType;
-import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
+import com.hmdp.exception.RateLimitExceededException;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -38,6 +38,8 @@ public class RateLimitAspect {
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private TrustedProxyMatcher trustedProxyMatcher;
 
     @Around("@annotation(rateLimit)")
     public Object around(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
@@ -56,7 +58,7 @@ public class RateLimitAspect {
 
         if (allowed == null || allowed == 0L) {
             log.warn("Request was rate limited. key={}", key);
-            return Result.fail("请求过于频繁，请稍后再试");
+            throw new RateLimitExceededException();
         }
         return joinPoint.proceed();
     }
@@ -82,13 +84,15 @@ public class RateLimitAspect {
             return "unknown";
         }
         HttpServletRequest request = attributes.getRequest();
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && forwardedFor.length() > 0) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && realIp.length() > 0) {
-            return realIp;
+        if (trustedProxyMatcher.matches(request.getRemoteAddr())) {
+            String forwardedFor = request.getHeader("X-Forwarded-For");
+            if (forwardedFor != null && forwardedFor.length() > 0) {
+                return forwardedFor.split(",")[0].trim();
+            }
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && realIp.length() > 0) {
+                return realIp.trim();
+            }
         }
         return request.getRemoteAddr();
     }
